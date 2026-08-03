@@ -1,0 +1,828 @@
+// NATYAM ERP — Firestore Security Rules
+// (Auth, Users, Login Sessions, Students, Admissions, Attendance, Class
+// Sessions, Programmes, Certificates, Batches, Staff, Fee Collection,
+// Finance, Documents, Admission Drafts, Notifications, Branches,
+// Academic Years, Curricula, Curriculum Levels, Holidays & Audit Log)
+//
+// Two unrelated things are both called "sessions" below — `sessions` is a
+// sign-in record (js/data/sessions.repository.firestore.js); `classSessions`
+// is a Timetable class occurrence (js/data/classSessions.repository.firestore.js).
+// Don't confuse the two collections despite the name.
+//
+// This is the real security boundary the old IndexedDB app never had.
+// Paste this into Firebase Console → Firestore Database → Rules (or deploy
+// with `firebase deploy --only firestore:rules` once the Firebase CLI is
+// set up) — I have no access to your project to do this myself.
+//
+// `users` documents are keyed by the person's lowercased email address
+// (see js/data/users.repository.firestore.js for why), so `request.auth.
+// token.email.lower()` always points straight at "the caller's own
+// document" without needing a query.
+//
+// Role model: Administrator / Owner & Accountant / Teacher & Reception /
+// Viewer (Doc 10 §8). Every role-gated collection below mirrors the
+// capability grants already defined in js/config/app.config.js's `ROLES`
+// table; this file does not re-decide who can do what, only enforces it
+// server-side.
+//
+// 2026-07-30 — Owner role upgrade. `owner_accountant` now holds every
+// capability except the system-level ones in that file's
+// ADMINISTRATOR_ONLY_CAPABILITIES list, because the academy's owner is also
+// its accountant, teacher, registrar and receptionist, and a role that made
+// her switch accounts to do her own job described the software rather than
+// the business. Concretely, in this file: canAdminister() (below) replaces a
+// bare isAdministrator() wherever the gate was standing in for an
+// operational capability the Owner now holds, and stays isAdministrator()
+// wherever it was standing in for a reserved one. The reserved ones, and
+// where each is enforced here:
+//
+//   data.restore     replaceAll()'s delete-then-recreate on every collection
+//                    it touches, plus /settings — restore and erase
+//   audit.purge      /auditLog delete
+//   role.manage      creating or altering an /users doc whose role is
+//                    `administrator` (the escalation the reservation would
+//                    otherwise be decoration without)
+//   system.configure, system.maintain, security.manage
+//                    no collection today — no screen grants them yet
+//
+// Client-side capability checks and these rules are two expressions of one
+// table, and they have to be edited together: a capability granted in
+// app.config.js and denied here is a "Missing or insufficient permissions"
+// crash, not a locked button.
+//
+// Milestone P1 added a second, unrelated identity: a Parent/Student Portal
+// guardian, who has no /users doc and no role at all — just an authenticated
+// caller whose phone/email token claim matches a guardianPhone/guardianEmail
+// already on file for one or more active students (isGuardianOfStudent()
+// below). This only ever widens `allow read` on students; every write rule
+// and every other collection's rules are unchanged.
+//
+// A per-studentId lookup (isGuardianOfStudentId()) was tried on attendance/
+// certificates/invoices/payments too and reverted 2026-07-27: Firestore caps
+// get()/exists() calls at 10 for an entire query, not per document, and a
+// full-collection read (a backup's safety copy, attendance$.replaceAll(),
+// etc.) touches far more than 10 distinct students — it denied the whole
+// query with "Missing or insufficient permissions" and broke a live restore.
+// The portal's Timetable/Attendance/Programmes/Certificates/Fees pages are
+// not yet server-side-authorized beyond students/{id} itself until that's
+// redesigned with a denormalized field (see isGuardianOfStudent()'s comment).
+//
+// 2026-07-27, separately: every repository's replaceAll() (used only by
+// restore-from-backup) hard-deletes every existing document in a collection
+// before recreating it. Several collections had `allow delete: if false`
+// (a deliberate "no hard delete in the normal app UI" policy, unrelated to
+// restore) — fine on a first-ever restore with nothing to delete, but it
+// silently aborted any later restore the moment that collection already had
+// documents, part-way through the fixed write sequence, leaving whatever
+// ran before the failure in place and everything after it untouched. Fixed
+// by opening `delete` to Administrator alone on admissions/classSessions/
+// programs/batches/staff/invoices/payments/branches/academicYears/
+// curricula/salaries/expenses/auditLog — the same role already gated
+// behind data.restore (then still called backup.manage) to reach restore()
+// at all. `update` stays denied
+// wherever it already was (auditLog stays append-only otherwise).
+//
+// Everything outside `users`/`meta`/`sessions`/`students`/`admissions`/
+// `attendance`/`classSessions`/`programs`/`certificates`/`batches`/`staff`/
+// `feePlans`/`invoices`/`payments`/`ledgerEntries`/`expenses`/`salaries`/
+// `documents`/`admissionDrafts`/`notifications`/`branches`/`academicYears`/
+// `curricula`/`curriculumLevels`/`holidays`/`auditLog` is denied by
+// default. As of Milestone 24 every entity in the app is on Firestore —
+// no store is left on IndexedDB with no rules to protect it. The final
+// catch-all rule must stay last regardless.
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function myEmail() {
+      return request.auth.token.email.lower();
+    }
+
+    function isOwnDoc(userId) {
+      return signedIn() && userId == myEmail();
+    }
+
+    // Direct path lookup — works because the doc id *is* the caller's email.
+    function callerDoc() {
+      return get(/databases/$(database)/documents/users/$(myEmail()));
+    }
+
+    // A phone-only caller (Milestone P1's Parent/Student Portal — no linked
+    // email at all) has no `email` token claim, and myEmail() calling
+    // .lower() on a missing claim throws — checked first, same reasoning as
+    // exists()-before-get() below: an unguarded check here would poison
+    // isProvisionedActiveUser() for every guardian caller.
+    function hasEmailClaim() {
+      return signedIn() && 'email' in request.auth.token && request.auth.token.email != null;
+    }
+
+    // exists() must come first: on a first-ever sign-in the caller has no
+    // /users doc yet, and reading .data off get() of a document that
+    // doesn't exist throws — which, unguarded, poisons any check built on
+    // it and denies even legitimate cases (like bootstrap). && short-
+    // circuits, so a missing/inactive/archived doc safely resolves through
+    // to "no role" rather than erroring.
+    function isProvisionedActiveUser() {
+      return signedIn()
+        && hasEmailClaim()
+        && exists(/databases/$(database)/documents/users/$(myEmail()))
+        && callerDoc().data.status == 'active'
+        && callerDoc().data.deletedAt == null;
+    }
+
+    function myRole() {
+      return isProvisionedActiveUser() ? callerDoc().data.role : null;
+    }
+
+    function isAdministrator() {
+      return myRole() == 'administrator';
+    }
+
+    function isTeacherReception() {
+      return myRole() == 'teacher_reception';
+    }
+
+    function isOwnerAccountant() {
+      return myRole() == 'owner_accountant';
+    }
+
+    // "Holds every operational capability" — Administrator by way of holding
+    // all of them, Owner by way of holding all but the reserved ones. Used
+    // wherever a rule needs the full-access set rather than a named
+    // capability, which in practice is everywhere the old rules said
+    // isAdministrator() for a reason other than the reservations listed in
+    // this file's header.
+    function canAdminister() {
+      return isAdministrator() || isOwnerAccountant();
+    }
+
+    // student.edit — Administrator, Owner and Teacher & Reception. Viewer
+    // is read-only for Students.
+    function canManageStudents() {
+      return canAdminister() || isTeacherReception();
+    }
+
+    // admission.edit — same role set as canManageStudents() today, but kept
+    // as its own named function since admission.edit and student.edit are
+    // distinct capabilities in app.config.js that merely happen to share a
+    // role set right now; a future change to either grant should not
+    // silently affect the other.
+    function canManageAdmissions() {
+      return canAdminister() || isTeacherReception();
+    }
+
+    // admission.approve is granted to Administrator, Owner & Accountant and
+    // Teacher & Reception — everyone except Viewer.
+    function canApproveAdmissions() {
+      return isAdministrator() || isOwnerAccountant() || isTeacherReception();
+    }
+
+    function isViewer() {
+      return myRole() == 'viewer';
+    }
+
+    // attendance.view — all four roles. The Owner gained it in the role
+    // upgrade (she teaches classes and takes her own registers), which makes
+    // this universal where it used to exclude her.
+    function canViewAttendance() {
+      return isProvisionedActiveUser();
+    }
+
+    // attendance.mark — Administrator, Owner and Teacher & Reception.
+    function canMarkAttendance() {
+      return canAdminister() || isTeacherReception();
+    }
+
+    // True when a write touches only soft-delete bookkeeping fields — used
+    // to require the full-access set specifically for archive/restore even
+    // where a role otherwise has general edit rights (student.delete is
+    // Administrator + Owner; student.edit also includes Teacher & Reception).
+    function isArchiveOnly() {
+      return request.resource.data.diff(resource.data).affectedKeys()
+        .hasOnly(['deletedAt', 'deletedBy', 'updatedAt', 'updatedBy']);
+    }
+
+    // Milestone P1 — Parent/Student Portal. A guardian has no /users doc and
+    // no role: their identity is just an authenticated caller whose phone or
+    // email token claim matches a guardianPhone/guardianEmail already on
+    // file for one or more active students (see
+    // docs/migrations/PARENT_STUDENT_PORTAL_MILESTONE.md and
+    // js/services/portal/guardianAuth.service.js). No new collection, no new
+    // role string — this only ever widens `allow read`, never a write rule.
+    function callerPhone() {
+      return signedIn() ? request.auth.token.phone_number : null;
+    }
+
+    function isGuardianOfStudent(studentData) {
+      return signedIn() && studentData.status == 'active' && (
+        (callerPhone() != null && studentData.guardianPhone == callerPhone()) ||
+        (hasEmailClaim() && studentData.guardianEmail == request.auth.token.email)
+      );
+    }
+
+    // A staff `/users` doc is always keyed by email, even for an account
+    // that also signs in via Mobile OTP — a phone-only session token has no
+    // email claim at all, so myEmail() can't identify "my own doc" the way
+    // it does for Google/Password. One extra get() (a single document, not
+    // a query — sessions/{id} is only ever read/written by its own id, never
+    // listed, so the 10-get query-wide budget doesn't apply here) confirms
+    // the userId being claimed is actually this caller's own account by
+    // checking its mobile field against the caller's phone claim. Confirmed
+    // 2026-07-28: sessions/{sessionId}'s unconditional myEmail() call was
+    // throwing (denying) every Mobile OTP sign-in at session-record
+    // creation, for staff and guardians alike, immediately after fixing the
+    // audit-log write that was masking it.
+    function ownsUserId(userId) {
+      return (hasEmailClaim() && userId == myEmail())
+        || (callerPhone() != null
+            && exists(/databases/$(database)/documents/users/$(userId))
+            && get(/databases/$(database)/documents/users/$(userId)).data.mobile == callerPhone());
+    }
+
+    // REMOVED (2026-07-27): a per-document get() on a different /students/{id}
+    // path for every distinct studentId is not viable on attendance/
+    // certificates/invoices/payments — Firestore caps get()/exists() calls at
+    // 10 for an ENTIRE query, not per document, and a full-collection read
+    // (buildBackup()'s safety copy, attendance$.replaceAll(), etc.) touches
+    // far more than 10 distinct students. It silently denied the whole query
+    // with "Missing or insufficient permissions" and broke a live restore.
+    // Guardian read access to students/{id} itself was unaffected
+    // (isGuardianOfStudent() above is a direct field comparison, no extra
+    // read, and was never the problem).
+
+    // Milestone P2 (2026-07-28) — the follow-up this comment used to point
+    // to: guardianPhone/guardianEmail are now denormalized directly onto
+    // attendance/certificates/invoices/payments documents themselves (see
+    // each service's create path — attendance.service.js#postRegister(),
+    // certificates.service.js#issue(), fees.service.js#createInvoice(), and
+    // ledger.repository.firestore.js#postPayment(), which copies its
+    // invoice's fields rather than re-reading the student). A direct field
+    // comparison here, same shape as isGuardianOfStudent() above, no get().
+    //
+    // Critical for this to actually work as a QUERY (not just a single-
+    // document get): Firestore only authorizes a list request when its own
+    // where() filter can prove this condition holds for every possible
+    // match. The portal's reads on these four collections were rewritten to
+    // query by guardianPhone/guardianEmail directly (each repository's new
+    // forGuardian()) instead of by studentId — a studentId-filtered query
+    // would still be denied outright no matter what this function checks,
+    // the exact failure already hit twice tonight elsewhere (the guardian's
+    // own students query, and users$.findByMobile()).
+    function isGuardianOfRecord(recordData) {
+      return signedIn() && (
+        (callerPhone() != null && recordData.guardianPhone == callerPhone()) ||
+        (hasEmailClaim() && recordData.guardianEmail == request.auth.token.email)
+      );
+    }
+
+    match /users/{userId} {
+      // A person may always read their own record (to resolve their own
+      // role/status on sign-in); an Administrator may read anyone's. The
+      // third branch is what makes Mobile OTP resolvable at all:
+      // users$.findByMobile() (auth.service.js's resolveProvisionedUser(),
+      // the very first read on every Mobile OTP sign-in, staff or
+      // guardian) is a QUERY (where('mobile','==',...)), not a get() by
+      // this doc's own id — a phone-only caller doesn't know their own
+      // email yet, so isOwnDoc(userId) can never match, and isAdministrator()
+      // requires an email claim too. Firestore only permits a query when
+      // its own where() clause can prove the rule holds for every possible
+      // match; since the query filters on the exact same `mobile` field
+      // this branch compares, and findByMobile() is only ever called with
+      // the caller's own just-verified phone number, this is safe — it can
+      // only ever match the one document that is genuinely theirs.
+      // Confirmed 2026-07-28: without this, every Mobile OTP sign-in
+      // (staff or guardian) failed at this very first lookup, before ever
+      // reaching resolveProvisionedUser()'s own status/method checks or
+      // the guardian portal fallback.
+      allow read: if isOwnDoc(userId) || canAdminister()
+        || (callerPhone() != null && resource.data.mobile == callerPhone());
+
+      // Normal provisioning: user.create — Administrator or Owner. An Owner
+      // may not mint an Administrator, though: role.manage is reserved, and
+      // without this clause every reserved permission would be one
+      // self-granted account away (settings.service.js's
+      // requireRoleAssignable() is the same check client-side). One-time
+      // exception: while `meta/bootstrapped` does not yet exist, the first
+      // person to sign in may create themself — as Administrator only. See
+      // bootstrapAdministrator() in the repository.
+      allow create: if isAdministrator()
+        || (isOwnerAccountant() && request.resource.data.role != 'administrator')
+        || (isOwnDoc(userId)
+            && request.resource.data.role == 'administrator'
+            && !exists(/databases/$(database)/documents/meta/bootstrapped));
+
+      // Profile edits, role changes, activate/deactivate/archive (a
+      // soft-delete update, not a hard delete) — user.edit, so Administrator
+      // or Owner. The Owner may neither touch an existing Administrator's
+      // account nor promote anyone into the role: both checks are needed,
+      // since either alone leaves the other route open.
+      allow update: if isAdministrator()
+        || (isOwnerAccountant()
+            && resource.data.role != 'administrator'
+            && request.resource.data.role != 'administrator');
+      allow delete: if false;
+    }
+
+    // Set once, atomically, alongside the bootstrap administrator's user
+    // doc. Its mere existence retires the bootstrap exception above forever.
+    match /meta/bootstrapped {
+      allow read: if signedIn();
+      allow write: if isAdministrator() || !exists(/databases/$(database)/documents/meta/bootstrapped);
+    }
+
+    // Shared business-code counter (USR000001, STU000001, …) — see
+    // js/data/sequenceGenerator.firestore.js. Writable by anyone who can
+    // create a code-bearing entity; today that's Administrator (users) and
+    // Administrator + Teacher & Reception (students), i.e. canManageStudents().
+    match /meta/counters {
+      allow read, write: if canManageStudents();
+    }
+
+    // One document per sign-in (js/data/sessions.repository.firestore.js).
+    // A person may create and end only their own; an Administrator may
+    // read anyone's, for a future "active sessions" admin view. Never
+    // deleted — ended sessions are a soft-delete update (endedAt/reason),
+    // the same audit-trail convention every other module uses.
+    match /sessions/{sessionId} {
+      allow create: if signedIn() && ownsUserId(request.resource.data.userId);
+      allow read: if signedIn() && (ownsUserId(resource.data.userId) || isAdministrator());
+      allow update: if signedIn() && ownsUserId(resource.data.userId);
+      allow delete: if false;
+    }
+
+    // Milestone 3 (see ADR-014, docs/migrations/STUDENT_MODULE_MIGRATION.md).
+    match /students/{studentId} {
+      // Every role has student.view — Administrator, Owner & Accountant,
+      // Teacher & Reception, Viewer alike. A guardian may additionally read
+      // only their own child's record (Milestone P1).
+      allow read: if isProvisionedActiveUser() || isGuardianOfStudent(resource.data);
+
+      allow create: if canManageStudents();
+
+      // A general profile/status edit needs student.edit (Administrator,
+      // Owner or Teacher & Reception); a write that *only* touches archive/
+      // restore bookkeeping needs student.delete (Administrator or Owner)
+      // instead — otherwise a Teacher & Reception account with edit rights
+      // could archive a student merely because it can edit one.
+      allow update: if (canManageStudents() && !isArchiveOnly())
+        || (canAdminister() && isArchiveOnly());
+
+      // Hard delete (students.service.js's deleteStudent(), which also
+      // removes the student's invoices/payments/attendance/certificates/
+      // documents) requires student.delete — same as archive above.
+      allow delete: if canAdminister();
+    }
+
+    // Milestone 5 (see ADR-014, docs/migrations/ADMISSIONS_MODULE_MIGRATION.md).
+    match /admissions/{admissionId} {
+      // Every role has admission.view — Administrator, Owner & Accountant,
+      // Teacher & Reception, Viewer alike.
+      allow read: if isProvisionedActiveUser();
+
+      // Only submit() requires admission.edit, held by Administrator and
+      // Teacher & Reception only.
+      allow create: if canManageAdmissions();
+
+      // Every other write (review/approve/reject/reopen/enrol) requires
+      // either admission.edit or admission.approve — the union of both is
+      // Administrator, Owner & Accountant and Teacher & Reception. This
+      // does not replicate the full client-side status-transition state
+      // machine field-by-field (a real design task, not attempted here) —
+      // it draws the one boundary that matters server-side: Viewer can
+      // never write to this collection. See the migration doc's Risks
+      // section for this disclosed simplification.
+      allow update: if canManageAdmissions() || canApproveAdmissions();
+
+      // No hard-delete path exists in the normal app UI (admissions are
+      // only ever soft-deleted) — but admissions$.replaceAll() (restore
+      // from a backup) does a real delete-then-recreate on this
+      // collection, and 2026-07-27 confirmed that fails outright once the
+      // collection already has documents if this stays `false` for
+      // everyone. Administrator-only, matching data.restore's own gate.
+      allow delete: if isAdministrator();
+    }
+
+    // Milestone 6 (see ADR-014). No Leave concept exists in NATYAM; Holiday
+    // handling is out of this collection's scope (Dashboard reads the
+    // Holidays calendar directly for its own display, unrelated to this
+    // rule set). Only Present/Absent are ever written — enforced in the
+    // Service layer (attendance.service.js's postRegister()), not
+    // duplicated here as a field-value rule.
+    match /attendance/{attendanceId} {
+      allow read: if canViewAttendance() || isGuardianOfRecord(resource.data);
+      allow create, update: if canMarkAttendance();
+
+      // Hard delete (students.service.js's deleteStudent(), which removes
+      // a student's attendance history along with their other records)
+      // requires student.delete, mirrored here since this collection has no
+      // capability of its own for hard deletes.
+      allow delete: if canAdminister();
+    }
+
+    // Milestone 7 (see ADR-014). Timetable owns Sessions — Attendance only
+    // ever references one by id, never writes here (enforced by
+    // architecture: session.service.js is the only file that touches this
+    // collection). Reusing canManageStudents() for writes deliberately —
+    // Session postpone/cancel/schedule actions piggyback on the same
+    // student.edit capability batch management already does (a pre-existing
+    // convention in this codebase, not something introduced here) rather
+    // than inventing a new capability unasked.
+    match /classSessions/{sessionId} {
+      allow read: if isProvisionedActiveUser();
+      allow create, update: if canManageStudents();
+
+      // A Session is never removed via the normal UI, only transitioned to
+      // Postponed/Cancelled/Completed — but classSessions$.replaceAll()
+      // (restore from a backup) needs a real delete-then-recreate here,
+      // same reasoning as admissions above. Administrator-only.
+      allow delete: if isAdministrator();
+    }
+
+    // program.edit — Administrator, Owner and Teacher & Reception. Kept as
+    // its own named function rather than reusing canManageStudents(), even
+    // though the role set is identical today, matching the same precedent
+    // already used for canManageAdmissions().
+    function canManagePrograms() {
+      return canAdminister() || isTeacherReception();
+    }
+
+    // Milestone 17 (see ADR-014). Programme records support a soft-delete
+    // (archive/restore), same convention as Students — a general edit and
+    // an archive/restore both need program.edit, so (unlike Students) no
+    // field-level split is drawn here; nothing in the application today
+    // distinguishes "edit" from "archive" for a programme the way it does
+    // for a student.
+    match /programs/{programId} {
+      // Every role has program.view — Administrator, Owner & Accountant,
+      // Teacher & Reception, Viewer alike.
+      allow read: if isProvisionedActiveUser();
+      allow create, update: if canManagePrograms();
+
+      // No hard-delete path exists in the normal app UI (a programme is
+      // only ever soft-deleted) — but programs$.replaceAll() (restore from
+      // a backup) needs a real delete-then-recreate here, same reasoning
+      // as admissions above. Administrator-only.
+      allow delete: if isAdministrator();
+    }
+
+    // certificate.issue — Administrator and Owner (Teacher & Reception and
+    // Viewer do not hold it). Kept as its own named function rather than
+    // reusing canAdminister() inline, matching the canManagePrograms()/
+    // canManageAdmissions() precedent.
+    function canIssueCertificates() {
+      return canAdminister();
+    }
+
+    // Milestone 18 (see ADR-014). A certificate is normally revoked, not
+    // deleted — update() covers both revoke() and any future edit. The one
+    // real hard-delete path is students.service.js's deleteStudent()
+    // cascade, which removes a student's certificates along with the rest
+    // of their history; that requires student.delete (Administrator only),
+    // mirrored here exactly as it already is for Attendance.
+    match /certificates/{certificateId} {
+      // The Certificates page is gated client-side by program.view, itself
+      // granted to every role — Administrator, Owner & Accountant, Teacher
+      // & Reception, Viewer alike — so every provisioned user can read here.
+      allow read: if isProvisionedActiveUser() || isGuardianOfRecord(resource.data);
+      allow create, update: if canIssueCertificates();
+      allow delete: if canAdminister();
+    }
+
+    // Milestone 19 (see ADR-014). Batch create/edit/close/reopen all piggyback
+    // on student.edit in batches.service.js (session.require('student.edit', ...)
+    // — there is no separate batch.edit capability) — the same situation
+    // classSessions is already in, and this reuses canManageStudents()
+    // directly for exactly the same reason that block already documents:
+    // no distinct capability exists to justify a dedicated helper. Batches
+    // read access is gated client-side by student.view (the Batches/
+    // Timetable nav entries), universal across all four roles.
+    match /batches/{batchId} {
+      allow read: if isProvisionedActiveUser();
+      allow create, update: if canManageStudents();
+
+      // No hard-delete path exists in the normal app UI (a batch is only
+      // ever closed via update()) — but batches$.replaceAll() (restore
+      // from a backup) needs a real delete-then-recreate here; confirmed
+      // 2026-07-27 that leaving this `false` for everyone silently aborts
+      // a restore the moment the collection already has documents (the
+      // exact bug behind students showing "Not placed" after a second
+      // restore attempt). Administrator-only, matching data.restore.
+      allow delete: if isAdministrator();
+    }
+
+    // staff.edit — Administrator and Owner (Teacher & Reception and Viewer
+    // hold staff.view only), so hiring, editing, deactivating and
+    // reactivating a staff member needs one of those two. Kept as its own
+    // named function rather than inlining canAdminister(), matching the
+    // precedent already set for canIssueCertificates().
+    function canManageStaff() {
+      return canAdminister();
+    }
+
+    // Milestone 20 (see ADR-014). A staff member is normally deactivated,
+    // not deleted — update() covers hire-adjacent edits, deactivate() and
+    // reactivate() alike. No hard-delete path exists in the application
+    // today — denied outright rather than granted speculatively.
+    match /staff/{staffId} {
+      // Every role has staff.view — Administrator, Owner & Accountant,
+      // Teacher & Reception, Viewer alike.
+      allow read: if isProvisionedActiveUser();
+      allow create, update: if canManageStaff();
+
+      // No hard-delete path exists in the normal app UI (deactivate/
+      // reactivate only) — but staff$.replaceAll() (restore from a
+      // backup) needs a real delete-then-recreate here, same reasoning as
+      // batches above. Administrator-only.
+      allow delete: if isAdministrator();
+    }
+
+    // Milestone 21 (see ADR-014). Fee Collection and Finance migrated
+    // together — fees.service.js's recordPayment()/refundPayment() and
+    // finance.service.js's recordExpense()/updateExpense()/removeExpense()/
+    // paySalaries() all wrote across multiple stores (including
+    // ledgerEntries) in a single IndexedDB db.unit() transaction; splitting
+    // the two modules across separate milestones would have broken that
+    // atomicity. The equivalent Firestore transactions now live in
+    // js/data/ledger.repository.firestore.js.
+
+    // settings.edit — Administrator and Owner. settings.service.js's
+    // createFeePlan()/updateFeePlan()/deleteFeePlan() all require it. Kept
+    // as its own named function matching the canManageStaff()/
+    // canIssueCertificates() precedent.
+    function canManageFeePlans() {
+      return canAdminister();
+    }
+
+    // fee.collect is granted to Administrator, Owner & Accountant and
+    // Teacher & Reception — everyone except Viewer.
+    function canCollectFees() {
+      return isAdministrator() || isOwnerAccountant() || isTeacherReception();
+    }
+
+    // fee.refund is granted to Administrator and Owner & Accountant only —
+    // Teacher & Reception can collect but not refund.
+    function canRefundFees() {
+      return isAdministrator() || isOwnerAccountant();
+    }
+
+    // fee.waive is granted to Administrator and Owner & Accountant only,
+    // the same role set as fee.refund today — kept as its own named
+    // function since the two are distinct capabilities in app.config.js
+    // that merely happen to coincide right now (the canManageAdmissions()/
+    // canManagePrograms() precedent).
+    function canWaiveFees() {
+      return isAdministrator() || isOwnerAccountant();
+    }
+
+    // finance.view is granted to Administrator, Owner & Accountant and
+    // Viewer — Teacher & Reception does not hold it, even though it can
+    // create a ledgerEntries document by collecting a fee payment. That
+    // asymmetry (can write via canCollectFees(), cannot read here) is a
+    // real, pre-existing feature of the app's own capability model, not
+    // something this migration introduces.
+    function canViewFinance() {
+      return isAdministrator() || isOwnerAccountant() || isViewer();
+    }
+
+    // finance.edit is granted to Administrator and Owner & Accountant only.
+    function canManageFinance() {
+      return isAdministrator() || isOwnerAccountant();
+    }
+
+    // Fee plan management has always been a hard delete (deleteFeePlan()
+    // in settings.service.js), unlike every other module migrated so far —
+    // the one place this project allows a genuine delete rather than a
+    // soft archive.
+    match /feePlans/{feePlanId} {
+      allow read: if isProvisionedActiveUser();
+      allow create, update, delete: if canManageFeePlans();
+    }
+
+    // Read access matches fee.view, held by every role. Write access draws
+    // the one boundary that matters server-side — some fee capability is
+    // required — rather than replicating the client-side state machine
+    // (raise/pay/refund/waive/cancel) field-by-field, the same reasoning
+    // already used for Admissions' status transitions.
+    match /invoices/{invoiceId} {
+      allow read: if isProvisionedActiveUser() || isGuardianOfRecord(resource.data);
+      allow create: if canCollectFees();
+      allow update: if canCollectFees() || canRefundFees() || canWaiveFees();
+
+      // Two paths need this: deleteStudent()'s cascade (student.delete —
+      // Administrator or Owner) and invoices$.replaceAll() (restore from a
+      // backup, Administrator alone). The wider of the two governs.
+      allow delete: if canAdminister();
+    }
+
+    match /payments/{paymentId} {
+      allow read: if isProvisionedActiveUser() || isGuardianOfRecord(resource.data);
+      allow create: if canCollectFees();
+      // Only refundPayment() ever updates an existing payment record.
+      allow update: if canRefundFees();
+
+      // deleteStudent()'s cascade removes a student's payments through their
+      // invoices (student.delete — Administrator or Owner), and
+      // payments$.replaceAll() (restore) needs it too.
+      allow delete: if canAdminister();
+    }
+
+    // Written by fee collection (a payment/refund posting) as well as
+    // Finance itself (an expense, a payroll run, a manual entry or
+    // reversal) — read access is Finance-only, matching the asymmetry
+    // canViewFinance() documents above. The one real hard-delete path is
+    // removeExpense()'s linked-entry deletion.
+    match /ledgerEntries/{entryId} {
+      allow read: if canViewFinance();
+      allow create: if canCollectFees() || canRefundFees() || canManageFinance();
+      allow update: if canManageFinance();
+      allow delete: if canManageFinance();
+    }
+
+    // removeExpense() always soft-deletes (an update, not a Firestore
+    // delete) — no hard-delete path exists.
+    match /expenses/{expenseId} {
+      allow read: if canViewFinance();
+      allow create, update: if canManageFinance();
+
+      // removeExpense() always soft-deletes — but expenses$.replaceAll()
+      // (restore from a backup) needs a real delete-then-recreate here.
+      // Administrator-only.
+      allow delete: if isAdministrator();
+    }
+
+    match /salaries/{salaryId} {
+      allow read: if canViewFinance();
+      allow create, update: if canManageFinance();
+
+      // No hard-delete path exists in the normal app UI — but
+      // salaries$.replaceAll() (restore from a backup) needs a real
+      // delete-then-recreate here. Administrator-only.
+      allow delete: if isAdministrator();
+    }
+
+    // Milestone 22 (see ADR-014). Documents, Admission Drafts and
+    // Notifications — three small, independent modules bundled into one
+    // milestone. None has its own capability; each piggybacks on
+    // whatever the app already gates it by.
+
+    // No capability check exists on documents$ anywhere except the
+    // deleteStudent() cascade (student.delete) — read is only reachable
+    // via the /students/:id route (student.view, universal), and no
+    // create/update path exists anywhere in the app today.
+    match /documents/{documentId} {
+      allow read: if isProvisionedActiveUser();
+      allow create, update: if false;
+      allow delete: if canAdminister();
+    }
+
+    // saveDraft()/listDrafts()/loadDraft()/discardDraft() have no
+    // session.require of their own — any signed-in user who can see
+    // Admissions (all four roles hold admission.view) can already save or
+    // discard a draft today. This preserves that exactly rather than
+    // tightening it unasked.
+    match /admissionDrafts/{draftId} {
+      allow read, create, update, delete: if isProvisionedActiveUser();
+    }
+
+    // notify()/markRead()/markAllRead()/dismiss()/list()/unreadCount()
+    // have no capability check today — the bell badge in js/ui/shell.js
+    // fetches unreadCount() for every signed-in session, independent of
+    // the /notifications route. The one real check in the app is
+    // announce()/removeAnnouncement()'s session.require('settings.edit',
+    // ...) — Administrator or Owner — expressed here as a field check on the
+    // `announcement` flag those two functions set, a precise translation of
+    // that existing check rather than a new restriction.
+    match /notifications/{notificationId} {
+      allow read, update: if isProvisionedActiveUser();
+      allow create: if isProvisionedActiveUser()
+        && (!request.resource.data.announcement || canAdminister());
+      allow delete: if isProvisionedActiveUser()
+        && (!resource.data.announcement || canAdminister());
+    }
+
+    // settings.edit — Administrator and Owner. createBranch()/
+    // updateBranch()/closeBranch(), createAcademicYear()/setCurrentYear(),
+    // and every curriculum/level write in curriculum.service.js all require
+    // it. Note the deliberate limit of this capability's scope: it covers the
+    // *academy's* configuration, never the system's — Firebase/API/
+    // environment settings and role definitions are separate, reserved
+    // capabilities (system.configure, role.manage) that no rule here grants.
+    function canManageSettings() {
+      return canAdminister();
+    }
+
+    // Milestone 23 (see ADR-014). Settings reference data — Branches,
+    // Academic Years, Curricula, Curriculum Levels and Holidays — the
+    // last data-shape migration before the Audit Log. Read broadly
+    // (branch/year/curriculum data is used across nearly every screen);
+    // write Administrator-only, matching settings.edit's actual grant.
+
+    // branches$.active() is read at every sign-in (js/app.js's
+    // hydrateSession()) — this must stay isProvisionedActiveUser(), not
+    // anything narrower, or a legitimately signed-in user could be locked
+    // out of their own branch list.
+    match /branches/{branchId} {
+      allow read: if isProvisionedActiveUser();
+      allow create, update: if canManageSettings();
+
+      // No hard-delete path exists in the normal app UI (closeBranch() is
+      // an update) — but branches$.replaceAll() (restore from a backup)
+      // needs a real delete-then-recreate here. Administrator-only.
+      allow delete: if isAdministrator();
+    }
+
+    match /academicYears/{yearId} {
+      allow read: if isProvisionedActiveUser();
+      allow create, update: if canManageSettings();
+
+      // No hard-delete path exists in the normal app UI — but
+      // academicYears$.replaceAll() (restore from a backup) needs a real
+      // delete-then-recreate here. Administrator-only.
+      allow delete: if isAdministrator();
+    }
+
+    match /curricula/{curriculumId} {
+      allow read: if isProvisionedActiveUser();
+      allow create, update: if canManageSettings();
+
+      // No hard-delete path exists in the normal app UI — but
+      // curricula$.replaceAll() (restore from a backup) needs a real
+      // delete-then-recreate here. Administrator-only.
+      allow delete: if isAdministrator();
+    }
+
+    // No write path exists anywhere in the app today — levels are
+    // populated only by a historical schema migration and read
+    // thereafter as a dropdown vocabulary. Denied outright rather than
+    // granted speculatively, matching the established precedent.
+    match /curriculumLevels/{levelId} {
+      allow read: if isProvisionedActiveUser();
+      allow create, update, delete: if false;
+    }
+
+    // No write path exists anywhere in the app today, and the store is
+    // never seeded either. Denied outright rather than granted
+    // speculatively.
+    match /holidays/{holidayId} {
+      allow read: if isProvisionedActiveUser();
+      allow create, update, delete: if false;
+    }
+
+    // The key/value settings store (js/data/settings.repository.firestore.js)
+    // — institute details, the document-numbering sequences, lastBackupAt,
+    // the structural overrides. It reached Firestore after the 24-entity
+    // migration was declared complete and had no rule of any kind here,
+    // which the catch-all at the bottom of this file denies outright: with
+    // settings on Firestore and this block missing, every role including
+    // Administrator fails to read the school's own name.
+    //
+    // Read is universal among provisioned users (the institute's name and
+    // address are on every receipt, certificate and report). Writes need
+    // settings.edit, with one deliberate exception: `sequences` is written
+    // by nextSequence() whenever anyone raises an admission, invoice,
+    // receipt or certificate — a Teacher & Reception account collecting a
+    // fee must be able to allocate the next receipt number without holding
+    // settings.edit. That is the same create-side asymmetry already accepted
+    // for ledgerEntries and auditLog. Deleting a settings document happens
+    // only in settings$.replaceAll() (restore) — Administrator alone.
+    match /settings/{settingKey} {
+      allow read: if isProvisionedActiveUser();
+      allow create, update: if canManageSettings()
+        || (isProvisionedActiveUser() && settingKey == 'sequences');
+      allow delete: if isAdministrator();
+    }
+
+    // Milestone 24 (see ADR-014) — the final store off IndexedDB. Every
+    // repository's own writeAuditRow() wrapper writes here as a side
+    // effect of a normal action across every role, so create is broad —
+    // any signed-in active user, not just those with audit.view — the
+    // same asymmetry already accepted for ledgerEntries (Milestone 21).
+    // Read is audit.view — Administrator and Owner. Delete is the one place
+    // the two part company on this collection: audit.purge is reserved, so
+    // the Owner can read the whole log and account for anything in it, and
+    // can never remove an entry from it. That asymmetry is the point of
+    // holding an owner accountable to a record she cannot edit.
+    match /auditLog/{entryId} {
+      allow read: if canAdminister();
+      allow create: if isProvisionedActiveUser();
+
+      // An audit entry is append-only by design — no update path exists,
+      // or should ever exist. But audit$.replaceAll() (restore from a
+      // backup) needs a real delete (of the old entries) before it
+      // recreates them, so delete alone is opened to Administrator —
+      // audit.purge and data.restore, both reserved; update stays
+      // permanently denied.
+      allow update: if false;
+      allow delete: if isAdministrator();
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

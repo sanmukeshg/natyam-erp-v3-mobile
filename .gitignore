@@ -1,0 +1,27 @@
+# Local agent/editor state — machine-specific, not part of the app.
+.claude/
+.vscode/
+.idea/
+
+# OS noise
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs and scratch
+*.log
+npm-debug.log*
+.tmp/
+tmp/
+
+# There is no build step and no dependency install — this app is served as
+# static files (see README). node_modules should never appear; ignored so an
+# accidental `npm i` cannot be committed.
+node_modules/
+
+# Backups produced by Settings → Data. These contain the school's real student
+# and financial records and must never be committed.
+natyam-backup-*.json
+natyam-before-restore-*.json
+natyam-before-erase-*.json
+natyam-*-*.json

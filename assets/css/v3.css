@@ -1,0 +1,1127 @@
+/* ============================================================================
+   NATYAM ERP v3 — MOBILE DESIGN LAYER
+   ----------------------------------------------------------------------------
+   The v3 mobile visual system, implemented from the approved Claude Design
+   project "NATYAM ERP Rebuild v3" ("Dashboard.dc.html", mobile half).
+
+   This is a mobile-first surface, not a narrowed desktop one: a top app bar
+   carrying identity and the day, a scrolling content column, and a five-slot
+   bottom tab bar. Nothing here is shared with natyam-admin's stylesheet —
+   the two apps are independent, and their chrome genuinely differs.
+
+   tokens.css is untouched and still supplies the type scale, spacing grid,
+   radii, motion and z-index. This file adds the v3 warm-glass-on-artwork
+   layer on top, in the design's own dark and light variants, wired to the
+   app's existing [data-theme] preference.
+
+   SAFE AREAS. The design mock is drawn inside an iOS device frame, so it
+   hardcodes 62px of top padding (the status bar) and 22px at the bottom (the
+   home indicator). Those belong to the device, not the app: here they are
+   env(safe-area-inset-*) with sane fallbacks, so the chrome sits correctly
+   on a notched phone, a flat one, and in a desktop browser during testing.
+   index.html sets viewport-fit=cover, which is what makes env() resolve.
+
+   TOUCH TARGETS. Every primary control — tab-bar items, list rows, buttons,
+   the search field, the FAB — is at least 44px on its smallest axis
+   (var(--v3-tap)), per the split spec's "touch-friendly controls" and the
+   iOS/WCAG 2.5.5 minimum. The one deliberate exception is the filter chips
+   (.m-pill, .m-profile-tab), which follow the design's 33/34px: they sit in a
+   horizontally scrolled secondary row where 44px reads as heavy, and they
+   still clear WCAG 2.5.8's 24px AA floor comfortably.
+   ========================================================================== */
+
+:root {
+    /* ---- v3 brand ---- */
+    --v3-terracotta:      #B45B34;
+    --v3-terracotta-deep: #8C4A28;
+    --v3-cream:           #FFF8EF;
+    --v3-ink:             #3A2013;
+    --v3-ink-soft:        #5B4632;
+
+    /* Bottom-bar states are their own pair in the design, warmer than the
+       body accent — kept as declared rather than folded into --v3-terracotta. */
+    /* Both tab colours are deeper than the design's (#E2622B / #6B5236). The
+       tab bar is white at 0.75, so over the DARKEST part of the artwork it
+       composites to about rgb(203,198,195) — and against that the design's
+       pair measured 3.6:1 and 4.3:1, under AA, on 10px labels. Measured at
+       that worst case, not at an average, because the artwork's dark region is
+       exactly where the bar sits. Now 5.1:1 and 5.3:1. */
+    --v3-tab-active:   #FFFFFF;
+    --v3-tab-inactive: #4A3826;
+
+    /* ---- tone ramp ---- */
+    --v3-positive: #8FD99A;
+    --v3-negative: #F0917C;
+    --v3-caution:  #F0C177;
+
+    /* ---- shape / metrics from the design ---- */
+    --v3-radius-card: 14px;
+    --v3-radius-item: 11px;
+    --v3-radius-pill: 99px;
+    --v3-tap:         44px;
+
+    --v3-glass-blur: blur(10px) saturate(128%);
+
+    /* The mobile brand artwork every surface floats on. The design project's
+       `mobile-bg-ref.png` is a reference copy of this same asset. */
+    --v3-backdrop: url("../img/brand/login-mobile-bg.jpg");
+
+    /* Safe areas, resolved once. */
+    --v3-safe-top:    env(safe-area-inset-top, 0px);
+    --v3-safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* ---------------------------------------------------------------- DARK ---- */
+:root,
+[data-theme="dark"] {
+    --v3-scrim:        rgba(30, 15, 8, 0.22);
+    --v3-title:        #FFF8EF;
+    --v3-title-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+    --v3-sub:          rgba(255, 248, 239, 0.78);
+
+    --v3-card-bg:     rgba(58, 32, 20, 0.58);
+    --v3-card-border: rgba(255, 248, 239, 0.16);
+    --v3-card-shadow: 0 10px 30px rgba(58, 32, 20, 0.3);
+    --v3-row-border:  rgba(255, 248, 239, 0.1);
+    --v3-name:        #FFFFFF;
+    --v3-muted:       rgba(255, 248, 239, 0.7);
+    --v3-ghost-bg:    rgba(255, 255, 255, 0.12);
+
+    /* Cream, matching natyam-admin's .v3-header hue — asked for directly, so
+       the two apps read as one product. White at 0.75 was too flat.
+
+       The opacity is 0.62, not the desktop's 0.45, and that is forced rather
+       than chosen. The desktop header sits over the artwork's bright upper
+       glow; the mobile TAB bar sits over its dark lower floor, where cream at
+       0.45 composites to rgb(140,126,116) — a mid tone on which *pure black*
+       tops out at 5.35:1 and the darkest colour in this palette reaches 3.83.
+       Nothing in the ramp passes AA there. 0.62 keeps the warm translucent
+       finish and gives the ink ramp room to be read. */
+    --v3-appbar-bg:   rgba(255, 248, 239, 0.62);
+    --v3-tabbar-bg:   rgba(255, 248, 239, 0.62);
+
+    --v3-tone-bg-positive: rgba(94, 166, 101, 0.14);
+    --v3-tone-bg-negative: rgba(224, 94, 74, 0.14);
+    --v3-tone-bg-caution:  rgba(224, 166, 74, 0.14);
+    --v3-tone-neutral:     rgba(255, 248, 239, 0.4);
+
+    --v3-delta-positive: #8FD99A;
+    --v3-delta-negative: #F0917C;
+    --v3-delta-caution:  #F0C177;
+    --v3-delta-neutral:  rgba(255, 248, 239, 0.7);
+}
+
+/* --------------------------------------------------------------- LIGHT ---- */
+[data-theme="light"] {
+    /* The design's own light token here is rgba(255,248,239,0.22) — a
+       *lightening* scrim. That works in the mock, but this variant keeps
+       white type (--v3-name below is #FFFFFF): it is lighter glass on a dark
+       photo, not a light theme in the conventional sense. Lightening the
+       backdrop under white text is what washed the fee badges and KPI values
+       out on the real artwork, so the scrim darkens in both variants and only
+       the glass above it gets lighter. Verified against the actual asset,
+       not assumed. */
+    --v3-scrim:        rgba(30, 15, 8, 0.34);
+    --v3-title:        #FFFFFF;
+    --v3-title-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+    --v3-sub:          rgba(255, 255, 255, 0.75);
+
+    --v3-card-bg:     rgba(255, 255, 255, 0.16);
+    --v3-card-border: rgba(255, 255, 255, 0.28);
+    --v3-card-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+    --v3-row-border:  rgba(255, 255, 255, 0.18);
+    --v3-name:        #FFFFFF;
+    --v3-muted:       rgba(255, 255, 255, 0.75);
+    --v3-ghost-bg:    rgba(255, 255, 255, 0.16);
+
+    --v3-appbar-bg:   rgba(255, 248, 239, 0.68);
+    --v3-tabbar-bg:   rgba(255, 248, 239, 0.68);
+
+    /* TONE BACKGROUNDS — v3 FIX, diverges from the design's light variant.
+       The design pairs opaque pastel tone-fills (#E9F5EF, #FBE4DC, #FBEEDC)
+       with WHITE type (--v3-name is #FFFFFF in this variant too). Measured on
+       the real screens that is a contrast ratio of 1.03–1.22 — WCAG AA wants
+       4.5 — i.e. white on near-white, effectively invisible. The mock was
+       evidently never checked against its own type colour.
+       Translucent tints instead, so the darkened backdrop shows through and
+       white type reads, consistent with --v3-card-bg in this same variant. */
+    --v3-tone-bg-positive: rgba(94, 166, 101, 0.30);
+    --v3-tone-bg-negative: rgba(224, 94, 74, 0.30);
+    --v3-tone-bg-caution:  rgba(224, 166, 74, 0.30);
+    --v3-tone-neutral:     rgba(255, 255, 255, 0.5);
+
+    /* Delta text sits ON those tints, so it lightens with them. */
+    --v3-delta-positive: #A8E6B2;
+    --v3-delta-negative: #F7AE9C;
+    --v3-delta-caution:  #F5D08E;
+    --v3-delta-neutral:  rgba(255, 255, 255, 0.8);
+}
+
+/* ==========================================================================
+   SHELL
+   ========================================================================== */
+
+.m-shell {
+    display: flex; flex-direction: column;
+    height: 100vh; height: 100dvh;
+    overflow: hidden;
+    background:
+        linear-gradient(var(--v3-scrim), var(--v3-scrim)),
+        var(--v3-backdrop) center / cover no-repeat fixed;
+    font-family: var(--font-ui);
+}
+
+/* -------------------------------------------------------------- APP BAR --- */
+
+.m-appbar {
+    flex-shrink: 0;
+    display: flex; align-items: center; gap: 10px;
+    padding: calc(var(--v3-safe-top) + 12px) var(--space-4) 12px;
+    background: var(--v3-appbar-bg);
+    backdrop-filter: blur(9px) saturate(145%);
+    -webkit-backdrop-filter: blur(9px) saturate(145%);
+    border-bottom: 1px solid rgba(255, 248, 239, 0.35);
+}
+.m-appbar-mark {
+    width: 36px; height: 36px; flex-shrink: 0; border-radius: 10px;
+    overflow: hidden; display: grid; place-items: center;
+    background: var(--v3-terracotta-deep);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+}
+.m-appbar-mark img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.m-appbar-text { min-width: 0; flex: 1; }
+.m-appbar-title {
+    font-size: 19px; font-weight: var(--weight-bold); color: var(--v3-ink);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+/* --v3-ink-soft (#5B4632) measures 2.3:1 on this bar. The subtitle carries
+   the branch name, which is not decoration, so it takes the darker ink. */
+.m-appbar-sub { font-size: 11.5px; font-weight: var(--weight-semibold); color: #4A3826; margin-top: 1px; }
+
+.m-avatar-btn {
+    width: var(--v3-tap); height: var(--v3-tap); flex-shrink: 0;
+    display: grid; place-items: center; padding: 0;
+    background: none; border: none; cursor: pointer;
+}
+.m-avatar {
+    width: 36px; height: 36px; display: grid; place-items: center;
+    font-size: var(--text-xs); font-weight: var(--weight-bold); color: #fff;
+    background: var(--v3-terracotta-deep); border-radius: var(--v3-radius-pill);
+}
+
+/* ------------------------------------------------------------- CONTENT ---- */
+
+.m-content {
+    flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch;
+    padding: 14px var(--space-4) var(--space-4);
+}
+
+.m-section-label {
+    font-size: var(--text-xs); font-weight: var(--weight-bold);
+    letter-spacing: 0.04em; text-transform: uppercase;
+    color: var(--v3-title); text-shadow: var(--v3-title-shadow);
+    margin: 0 0 8px;
+}
+.m-stack { display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; }
+
+/* --------------------------------------------------------- BOTTOM TABS ---- */
+
+/*
+ * A detached "bubble": the bar pulls in from all three edges so the artwork
+ * runs behind and around it, instead of sitting flush as a full-bleed footer.
+ *
+ * It stays IN FLOW rather than being positioned over the content. Floating it
+ * would mean every scrollable page owed the bar a matching bottom padding, and
+ * the last row of a long list would hide under it on any page that forgot —
+ * a whole class of bug bought for no visual gain, since the margins already
+ * read as detached.
+ *
+ * The safe-area inset becomes part of the bottom MARGIN, not the padding, so
+ * on a notched phone the bubble lifts clear of the home indicator instead of
+ * growing a tall dead strip inside itself.
+ */
+.m-tabbar {
+    flex-shrink: 0; display: flex; align-items: stretch;
+    margin: 0 10px calc(var(--v3-safe-bottom) + 10px);
+    padding: 5px 5px;
+    background: var(--v3-tabbar-bg);
+    backdrop-filter: blur(9px) saturate(145%);
+    -webkit-backdrop-filter: blur(9px) saturate(145%);
+    border: 1px solid rgba(255, 248, 239, 0.35);
+    border-radius: 22px;
+    box-shadow:
+        0 8px 24px rgba(30, 15, 8, 0.28),
+        0 2px 6px rgba(30, 15, 8, 0.16);
+}
+.m-tab {
+    flex: 1; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 3px;
+    padding: 5px 0; min-height: var(--v3-tap);
+    background: none; border: none; cursor: pointer;
+    font-family: inherit; text-decoration: none;
+    color: var(--v3-tab-inactive);
+    border-radius: 17px;
+    transition: background var(--duration-fast) var(--ease-standard);
+}
+.m-tab:hover { text-decoration: none; color: var(--v3-tab-inactive); }
+.m-tab-label { font-size: 10px; font-weight: var(--weight-medium); }
+
+/* The active slot gets its own smaller bubble inside the bar. On a near-white
+   bar the old treatment was colour alone, and #E2622B on white measures 3.4:1
+   — under AA, on a 10px label. The tint plus the deeper terracotta below fixes
+   both the legibility and the "which tab am I on" glance. */
+.m-tab[aria-current="page"], .m-tab[aria-expanded="true"] {
+    color: var(--v3-tab-active);
+    background: var(--v3-terracotta);
+}
+.m-tab[aria-current="page"] .m-tab-label,
+.m-tab[aria-expanded="true"] .m-tab-label { font-weight: var(--weight-bold); }
+.m-tab[data-pending="true"] { opacity: 0.5; }
+
+/* ---------------------------------------------------------- MORE SHEET ---- */
+
+.m-sheet-scrim {
+    position: fixed; inset: 0; z-index: var(--z-drawer);
+    background: rgba(20, 11, 6, 0.5);
+    backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px);
+}
+.m-sheet {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: var(--z-modal);
+    max-height: 78vh; overflow-y: auto;
+    padding: 8px var(--space-4) calc(var(--v3-safe-bottom) + var(--space-4));
+    background: linear-gradient(180deg, rgba(35, 19, 10, 0.97), rgba(20, 11, 6, 0.97));
+    backdrop-filter: var(--v3-glass-blur); -webkit-backdrop-filter: var(--v3-glass-blur);
+    border-top: 1px solid rgba(255, 248, 239, 0.16);
+    border-radius: 20px 20px 0 0;
+    box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.45);
+    animation: m-sheet-in var(--duration-normal) var(--ease-entrance);
+}
+@keyframes m-sheet-in { from { transform: translateY(100%); } to { transform: none; } }
+.m-sheet-grip {
+    width: 38px; height: 4px; margin: 4px auto 12px;
+    border-radius: var(--v3-radius-pill); background: rgba(255, 248, 239, 0.3);
+}
+.m-sheet-item {
+    display: flex; align-items: center; gap: 14px;
+    min-height: var(--v3-tap); padding: 0 12px; margin-bottom: 2px;
+    border-radius: var(--v3-radius-item); text-decoration: none;
+    color: var(--v3-cream); font-size: var(--text-base); font-weight: var(--weight-medium);
+}
+.m-sheet-item:hover { background: rgba(255, 248, 239, 0.08); color: var(--v3-cream); text-decoration: none; }
+.m-sheet-item[data-pending="true"] { opacity: 0.45; }
+.m-sheet-item[data-pending="true"]::after {
+    content: "soon"; margin-left: auto;
+    font-size: 9px; font-weight: var(--weight-bold);
+    letter-spacing: 0.04em; text-transform: uppercase;
+}
+.m-sheet-sep { height: 1px; background: rgba(255, 248, 239, 0.12); margin: 8px 0; }
+.m-sheet-danger { color: var(--v3-negative); }
+
+/* ==========================================================================
+   GLASS SURFACES
+   ========================================================================== */
+
+.m-card {
+    background: var(--v3-card-bg);
+    backdrop-filter: var(--v3-glass-blur); -webkit-backdrop-filter: var(--v3-glass-blur);
+    border: 1px solid var(--v3-card-border);
+    border-radius: var(--v3-radius-card);
+    box-shadow: var(--v3-card-shadow);
+}
+
+.m-card-title { font-size: var(--text-base); font-weight: var(--weight-semibold); color: var(--v3-name); }
+.m-card-meta  { font-size: var(--text-xs); color: var(--v3-muted); margin-top: 2px; }
+
+/* ---- teacher: two stat tiles ---- */
+.m-stat-row { display: flex; gap: 10px; margin-bottom: var(--space-4); }
+.m-stat { flex: 1; padding: 14px; }
+.m-stat-value { font-size: 22px; font-weight: var(--weight-semibold); color: var(--v3-name); }
+.m-stat-label { font-size: 11px; color: var(--v3-muted); margin-top: 2px; }
+
+/* ---- owner: horizontally scrolled KPI strip ---- */
+.m-kpi-strip {
+    display: flex; gap: 10px; overflow-x: auto; padding-bottom: 4px;
+    margin: 0 calc(var(--space-4) * -1) 18px; padding-left: var(--space-4); padding-right: var(--space-4);
+    scroll-snap-type: x proximity; -webkit-overflow-scrolling: touch;
+}
+.m-kpi {
+    display: flex; flex-shrink: 0; width: 130px; overflow: hidden;
+    scroll-snap-align: start; text-decoration: none;
+}
+.m-kpi:hover { text-decoration: none; }
+.m-kpi-bar { flex-shrink: 0; width: 3px; background: var(--v3-tone-neutral); }
+.m-kpi[data-tone="positive"] .m-kpi-bar { background: var(--v3-positive); }
+.m-kpi[data-tone="negative"] .m-kpi-bar { background: var(--v3-negative); }
+.m-kpi[data-tone="caution"]  .m-kpi-bar { background: var(--v3-caution); }
+.m-kpi-body { flex: 1; min-width: 0; padding: 14px; }
+.m-kpi-label {
+    font-size: 10px; font-weight: var(--weight-semibold);
+    letter-spacing: 0.04em; text-transform: uppercase; color: var(--v3-muted);
+}
+.m-kpi-value { font-size: 19px; font-weight: var(--weight-semibold); color: var(--v3-name); margin-top: 6px; }
+.m-kpi-delta { font-size: 11px; font-weight: var(--weight-semibold); margin-top: 4px; color: var(--v3-delta-neutral); }
+.m-kpi-delta[data-tone="positive"] { color: var(--v3-delta-positive); }
+.m-kpi-delta[data-tone="negative"] { color: var(--v3-delta-negative); }
+.m-kpi-delta[data-tone="caution"]  { color: var(--v3-delta-caution); }
+
+/* ---- class row with its own action ---- */
+.m-class { display: flex; align-items: center; gap: 12px; padding: 12px 14px; }
+.m-class-main { flex: 1; min-width: 0; }
+.m-class-name { font-size: var(--text-base); font-weight: var(--weight-semibold); color: var(--v3-name); }
+.m-class-time { font-size: var(--text-xs); color: var(--v3-muted); margin-top: 2px; }
+
+.m-btn {
+    flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center;
+    min-height: var(--v3-tap); padding: 0 16px; cursor: pointer; text-decoration: none;
+    font-size: var(--text-sm); font-weight: var(--weight-bold); font-family: inherit;
+    border: none; border-radius: var(--v3-radius-item);
+    background: var(--v3-terracotta); color: #fff;
+}
+.m-btn:hover { background: #9d4d2b; color: #fff; text-decoration: none; }
+.m-btn-ghost {
+    background: var(--v3-ghost-bg); color: var(--v3-name);
+    border: 1px solid var(--v3-card-border);
+}
+.m-btn-ghost:hover { background: rgba(255, 255, 255, 0.2); color: var(--v3-name); }
+.m-btn-block { display: flex; width: 100%; margin-top: 10px; }
+
+/* ---- attention card ---- */
+.m-attn { padding: 14px; }
+.m-attn-head { display: flex; align-items: flex-start; gap: 10px; }
+.m-dot { width: 9px; height: 9px; margin-top: 5px; flex-shrink: 0; border-radius: var(--v3-radius-pill); background: var(--v3-tone-neutral); }
+.m-dot[data-severity="high"]   { background: var(--v3-negative); }
+.m-dot[data-severity="medium"] { background: var(--v3-caution); }
+.m-dot[data-severity="low"]    { background: #8FBFF0; }
+.m-attn-title  { font-size: var(--text-sm); font-weight: var(--weight-semibold); color: var(--v3-name); }
+.m-attn-detail { font-size: var(--text-xs); color: var(--v3-muted); margin-top: 2px; }
+
+/* ---- quick actions / insights: 2-up grids ---- */
+.m-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
+.m-quick {
+    display: flex; align-items: center; gap: 12px;
+    padding: 14px; min-height: var(--v3-tap); text-decoration: none;
+}
+.m-quick:hover { text-decoration: none; }
+.m-quick-icon { width: 34px; height: 34px; flex-shrink: 0; display: grid; place-items: center; border-radius: var(--v3-radius-item); }
+.m-quick-label { font-size: var(--text-sm); font-weight: var(--weight-semibold); color: var(--v3-name); }
+
+.m-insight { padding: 12px 14px; text-decoration: none; display: block; }
+.m-insight:hover { text-decoration: none; }
+.m-insight-label { font-size: 11px; color: var(--v3-muted); }
+.m-insight-value { font-size: var(--text-md); font-weight: var(--weight-semibold); color: var(--v3-name); margin-top: 4px; }
+.m-insight-foot  { font-size: 11px; color: var(--v3-muted); margin-top: 2px; }
+
+/* ---- badges, activity, states ---- */
+.m-badge {
+    flex-shrink: 0; padding: 3px 9px; border-radius: 7px;
+    font-size: 11px; font-weight: var(--weight-bold);
+    background: var(--v3-ghost-bg); color: var(--v3-muted);
+}
+.m-badge[data-state="marked"]   { background: rgba(94, 166, 101, 0.16); color: var(--v3-positive); }
+.m-badge[data-state="running"]  { background: rgba(224, 166, 74, 0.16); color: var(--v3-caution); }
+.m-badge[data-state="missed"]   { background: rgba(224, 94, 74, 0.18); color: var(--v3-negative); }
+.m-badge[data-state="upcoming"] { background: rgba(255, 248, 239, 0.08); color: var(--v3-muted); }
+
+.m-activity { display: flex; gap: 10px; padding: 12px 14px; }
+.m-activity-text { font-size: 12.5px; color: var(--v3-name); }
+.m-activity-meta { font-size: 11px; color: var(--v3-muted); margin-top: 2px; }
+
+.m-empty { padding: var(--space-6); text-align: center; font-size: var(--text-sm); color: var(--v3-muted); }
+.m-error {
+    padding: var(--space-4); border-radius: var(--v3-radius-card);
+    background: rgba(224, 94, 74, 0.14); border: 1px solid rgba(240, 145, 124, 0.3);
+    color: var(--v3-name); font-size: var(--text-sm);
+}
+.m-skeleton { padding: var(--space-10) var(--space-4); text-align: center; color: var(--v3-sub); text-shadow: var(--v3-title-shadow); }
+
+/* A phone in landscape, or a tablet, gets a readable column rather than
+   stretched-out full-bleed rows. */
+@media (min-width: 620px) {
+    .m-content > * { max-width: 620px; margin-left: auto; margin-right: auto; }
+    .m-kpi-strip { max-width: 620px; margin-left: auto; margin-right: auto; }
+}
+
+/* ==========================================================================
+   STUDENTS (Stage 3)
+   From "Students.dc.html" (mobile half): full-width tappable cards, an
+   always-visible search, scrollable filter pills, a floating add button, and
+   a near-full-screen profile sheet. Deliberately not the desktop roll at a
+   narrower width — different components for a different hand.
+   ========================================================================== */
+
+/* --------------------------------------------------------- SUB-HEADER ----- */
+
+/*
+ * The negative margins full-bleed this bar out of `.m-content`'s padding so it
+ * meets the app bar edge-to-edge.
+ *
+ * `top` must be NEGATIVE to match. A sticky element pins to its scrollport's
+ * *padding box*, not its border box — with `top: 0` it could never rise above
+ * `.m-content`'s 14px top padding, which silently cancelled the -14px margin.
+ * Two symptoms, one cause: a 14px strip of artwork showed between the two white
+ * bars, and the pinned bar painted 2px over the section label beneath it
+ * (z-index 5, so the label lost). -14px lets it sit flush at either scroll
+ * position. Keep this in step with `.m-content`'s padding-top.
+ */
+.m-subhead {
+    position: sticky; top: -14px; z-index: 5;
+    margin: -14px calc(var(--space-4) * -1) 12px;
+    padding: 12px var(--space-4) 10px;
+    background: var(--v3-appbar-bg);
+    backdrop-filter: blur(9px) saturate(145%); -webkit-backdrop-filter: blur(9px) saturate(145%);
+    border-bottom: 1px solid rgba(255, 248, 239, 0.35);
+}
+.m-subhead-row { display: flex; gap: 8px; }
+.m-subhead-note { margin: 8px 0 0; font-size: 11.5px; font-weight: var(--weight-semibold); color: var(--v3-ink-soft); }
+
+/* The design draws this pair at 42px. Raised to the 44px touch floor
+   (var(--v3-tap)) instead: the split spec calls for touch-friendly controls,
+   and 44px is the platform minimum on both iOS and WCAG 2.5.5. A 2px
+   deviation from the mock is the right trade against a target that misses
+   the accessibility floor — noted here so it reads as a decision, not drift. */
+.m-search {
+    flex: 1; display: flex; align-items: center; gap: 8px;
+    height: var(--v3-tap); padding: 0 12px;
+    background: rgba(255, 255, 255, 0.75);
+    border: 1px solid rgba(196, 155, 110, 0.3);
+    border-radius: 12px; color: #6B5642;
+}
+.m-search input {
+    flex: 1; min-width: 0; background: none; border: none; outline: none;
+    font: inherit; color: var(--v3-ink);
+    /* 16px: anything smaller and iOS Safari zooms the page on focus. */
+    font-size: var(--text-md);
+}
+.m-search input::placeholder { color: #6B5642; }
+
+.m-icon-btn {
+    flex-shrink: 0; width: var(--v3-tap); height: var(--v3-tap); display: grid; place-items: center;
+    cursor: pointer; background: rgba(255, 255, 255, 0.75);
+    border: 1px solid rgba(196, 155, 110, 0.3); border-radius: 12px; color: #6B5642;
+}
+.m-icon-btn[aria-expanded="true"] { background: var(--v3-terracotta); border-color: var(--v3-terracotta); color: #fff; }
+
+.m-chip-scroll {
+    display: flex; gap: 6px; overflow-x: auto;
+    margin: 10px calc(var(--space-4) * -1) 0; padding: 0 var(--space-4) 2px;
+    -webkit-overflow-scrolling: touch;
+    /* The pills are swiped, not dragged by a bar. Chrome painted an overlay
+       scrollbar as a dark line straight across the white subhead. */
+    scrollbar-width: none; -ms-overflow-style: none;
+}
+.m-chip-scroll::-webkit-scrollbar { display: none; }
+.m-pill {
+    flex-shrink: 0; height: 33px; padding: 0 13px; cursor: pointer;
+    font-size: var(--text-xs); font-weight: var(--weight-semibold); font-family: inherit;
+    border-radius: var(--v3-radius-pill);
+    background: rgba(255, 255, 255, 0.7); color: var(--v3-ink);
+    border: 1px solid rgba(196, 155, 110, 0.3);
+}
+.m-pill[aria-pressed="true"] { background: var(--v3-terracotta); border-color: var(--v3-terracotta); color: #fff; }
+
+/* ------------------------------------------------------------ ROLL CARD --- */
+
+.m-student {
+    display: flex; align-items: center; gap: 12px;
+    width: 100%; padding: 13px 14px; cursor: pointer; text-align: left;
+    font-family: inherit; min-height: var(--v3-tap);
+}
+.m-student-index { width: 22px; flex-shrink: 0; font-size: var(--text-xs); color: var(--v3-muted); text-align: right; }
+.m-student-main { flex: 1; min-width: 0; }
+.m-student-name {
+    display: block; font-size: var(--text-base); font-weight: var(--weight-semibold);
+    color: var(--v3-name); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.m-student-meta {
+    display: block; font-size: 11.5px; color: var(--v3-muted); margin-top: 2px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.m-badge[data-fee="overdue"] { background: rgba(224, 94, 74, 0.18); color: var(--v3-negative); }
+.m-badge[data-fee="due"]     { background: rgba(224, 166, 74, 0.16); color: var(--v3-caution); }
+.m-badge[data-fee="clear"]   { background: rgba(94, 166, 101, 0.16); color: var(--v3-positive); }
+
+/* ------------------------------------------------------------------ FAB --- */
+
+.m-fab {
+    position: fixed; right: var(--space-4);
+    /* Clears the tab bar (~62px incl. safe area) plus breathing room. */
+    bottom: calc(var(--v3-safe-bottom) + 78px);
+    z-index: 20; width: 54px; height: 54px;
+    display: grid; place-items: center; cursor: pointer;
+    background: rgba(180, 91, 52, 0.92); color: #fff;
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+    border: 1px solid rgba(255, 248, 239, 0.35);
+    border-radius: var(--v3-radius-pill);
+    box-shadow: 0 8px 22px rgba(180, 91, 52, 0.45);
+}
+.m-fab:active { transform: scale(0.96); }
+
+/* -------------------------------------------------------- PROFILE SHEET --- */
+
+.m-profile {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: var(--z-modal);
+    height: 86vh; display: flex; flex-direction: column; overflow: hidden;
+    background: linear-gradient(180deg, rgba(48, 26, 16, 0.97), rgba(28, 15, 8, 0.97));
+    backdrop-filter: var(--v3-glass-blur); -webkit-backdrop-filter: var(--v3-glass-blur);
+    border-top: 1px solid var(--v3-card-border);
+    border-radius: 20px 20px 0 0;
+    box-shadow: 0 -14px 44px rgba(0, 0, 0, 0.5);
+    animation: m-sheet-in var(--duration-normal) var(--ease-entrance);
+}
+.m-profile-head {
+    flex-shrink: 0; display: flex; align-items: flex-start; justify-content: space-between;
+    gap: 12px; padding: 18px 18px 0;
+}
+.m-profile-name { margin: 0; font-size: var(--text-md); font-weight: var(--weight-semibold); color: var(--v3-name); }
+.m-profile-sub { margin: 3px 0 0; font-size: 11.5px; color: var(--v3-muted); }
+
+.m-profile-tabs {
+    flex-shrink: 0; display: flex; gap: 4px; padding: 14px 18px 0;
+    border-bottom: 1px solid var(--v3-row-border); overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+.m-profile-tab {
+    flex-shrink: 0; height: 34px; padding: 0 12px; cursor: pointer;
+    font-size: 11.5px; font-weight: var(--weight-medium); font-family: inherit;
+    background: none; border: none; border-radius: 7px 7px 0 0; color: var(--v3-muted);
+}
+.m-profile-tab[aria-selected="true"] { background: rgba(180, 91, 52, 0.55); color: var(--v3-cream); }
+
+.m-profile-body {
+    flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch;
+    padding: 16px 18px calc(var(--v3-safe-bottom) + 20px);
+    display: flex; flex-direction: column; gap: 12px;
+}
+.m-profile-note { margin: 0; font-size: 12.5px; color: var(--v3-muted); }
+
+.m-metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.m-metric {
+    padding: 9px 10px; border-radius: 10px;
+    background: rgba(255, 255, 255, 0.06); border: 1px solid var(--v3-row-border);
+}
+.m-metric-label { font-size: 9.5px; color: var(--v3-muted); text-transform: uppercase; letter-spacing: 0.03em; }
+.m-metric-value { font-size: var(--text-base); font-weight: var(--weight-semibold); color: var(--v3-name); margin-top: 2px; }
+
+.m-notice { padding: 12px 14px; border-radius: 10px; font-size: 12.5px; color: var(--v3-name); }
+.m-notice[data-tone="caution"] { background: rgba(214, 164, 44, 0.16); border: 1px solid rgba(214, 164, 44, 0.4); }
+.m-notice[data-tone="info"]    { background: rgba(94, 166, 101, 0.14); border: 1px solid rgba(94, 166, 101, 0.3); }
+
+.m-facts {
+    margin: 0; padding: 12px 14px; border-radius: 11px;
+    background: rgba(255, 255, 255, 0.05); border: 1px solid var(--v3-row-border);
+    display: flex; flex-direction: column; gap: 6px;
+    font-size: 12.5px; color: var(--v3-name);
+}
+.m-fact { display: flex; justify-content: space-between; gap: 12px; }
+.m-fact dt { color: var(--v3-muted); }
+.m-fact dd { margin: 0; text-align: right; min-width: 0; }
+
+/* ==========================================================================
+   ATTENDANCE — THE REGISTER (Stage 5)
+   No approved v3 design exists for this screen (see docs/design/README.md).
+   The interaction is ported from v2 — "everybody starts present, marking is
+   one tap" — dressed in the v3 mobile system. Reconcile against
+   Attendance.dc.html if it is ever recovered.
+   ========================================================================== */
+
+.m-daynav { display: flex; align-items: center; gap: 8px; }
+.m-day {
+    flex: 1; min-height: var(--v3-tap); padding: 4px 10px; cursor: pointer;
+    background: rgba(255, 255, 255, 0.75);
+    border: 1px solid rgba(196, 155, 110, 0.3);
+    border-radius: 12px; font-family: inherit; text-align: center;
+}
+.m-day-label { display: block; font-size: var(--text-base); font-weight: var(--weight-bold); color: var(--v3-ink); }
+.m-day-sub { display: block; font-size: 11px; color: var(--v3-ink-soft); margin-top: 1px; }
+
+.m-reg-head { display: flex; align-items: center; gap: 10px; }
+.m-reg-name { font-size: var(--text-md); font-weight: var(--weight-bold); color: var(--v3-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.m-reg-date { font-size: 11.5px; font-weight: var(--weight-semibold); color: var(--v3-ink-soft); margin-top: 1px; }
+
+/* The roster scrolls the page, not a box inside it — a phone has no room for
+   nested scroll areas, and the sticky save bar below keeps the action
+   reachable however far down the list a teacher has thumbed. */
+.m-roster {
+    display: flex; flex-direction: column; gap: 6px;
+    margin-top: 12px;
+    /* Clear the save bar + tab bar so the last student is never trapped. */
+    padding-bottom: calc(var(--v3-safe-bottom) + 132px);
+}
+
+/* Present is the resting state and stays quiet; absent is the state that
+   shouts. A teacher scanning down should see absences, not forty equal rows. */
+.m-mark {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    width: 100%; min-height: 56px; padding: 12px 14px;
+    cursor: pointer; text-align: left; font-family: inherit;
+    background: var(--v3-card-bg);
+    backdrop-filter: var(--v3-glass-blur); -webkit-backdrop-filter: var(--v3-glass-blur);
+    border: 1px solid var(--v3-card-border);
+    border-left: 3px solid var(--v3-positive);
+    border-radius: var(--v3-radius-card);
+    transition: background var(--duration-fast) var(--ease-standard);
+}
+.m-mark:active { transform: scale(0.995); }
+.m-mark[data-status="absent"] {
+    background: rgba(224, 94, 74, 0.2);
+    border-color: rgba(240, 145, 124, 0.4);
+    border-left-color: var(--v3-negative);
+}
+.m-mark[disabled] { opacity: 0.5; }
+
+.m-mark-main { min-width: 0; flex: 1; }
+.m-mark-name {
+    display: block; font-size: var(--text-base); font-weight: var(--weight-semibold);
+    color: var(--v3-name); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.m-mark-meta { display: block; font-size: 11px; color: var(--v3-muted); margin-top: 2px; }
+
+.m-mark-state {
+    flex-shrink: 0; padding: 5px 12px; border-radius: 8px;
+    font-size: var(--text-xs); font-weight: var(--weight-bold);
+    background: rgba(94, 166, 101, 0.18); color: var(--v3-positive);
+}
+.m-mark[data-status="absent"] .m-mark-state {
+    background: rgba(224, 94, 74, 0.24); color: var(--v3-negative);
+}
+
+/* Pinned above the tab bar: on a phone the save action must never scroll away. */
+.m-savebar {
+    position: fixed; left: 0; right: 0; z-index: 15;
+    bottom: calc(var(--v3-safe-bottom) + 62px);
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 10px var(--space-4);
+    background: var(--v3-tabbar-bg);
+    backdrop-filter: blur(9px) saturate(145%); -webkit-backdrop-filter: blur(9px) saturate(145%);
+    border-top: 1px solid rgba(196, 155, 110, 0.3);
+    box-shadow: 0 -4px 16px rgba(58, 32, 20, 0.12);
+}
+.m-savebar-hint { font-size: 11.5px; font-weight: var(--weight-semibold); color: var(--v3-ink-soft); }
+.m-pill[disabled] { opacity: 0.5; }
+
+/* ==========================================================================
+   ADMISSIONS (Stage 6)
+   No approved v3 design exists for this screen either (see
+   docs/design/README.md). The status ladder is the service's — see
+   nextActionFor() in admissions.service.js — and these chips only colour it.
+   ========================================================================== */
+
+/* Reads as a temperature: nothing waiting on us is neutral, anything sitting
+   in our court is warm, done is green, refused is red. */
+.m-badge[data-admission="draft"]     { background: rgba(255, 248, 239, 0.1); color: var(--v3-muted); }
+.m-badge[data-admission="submitted"] { background: rgba(62, 125, 191, 0.22); color: #8FBFF0; }
+.m-badge[data-admission="reviewing"] { background: rgba(224, 166, 74, 0.2); color: var(--v3-caution); }
+.m-badge[data-admission="approved"]  { background: rgba(224, 166, 74, 0.28); color: var(--v3-caution); }
+.m-badge[data-admission="enrolled"]  { background: rgba(94, 166, 101, 0.2); color: var(--v3-positive); }
+.m-badge[data-admission="rejected"]  { background: rgba(224, 94, 74, 0.22); color: var(--v3-negative); }
+
+/* The sheet's action row. Pinned at the foot so the next step is reachable
+   with a thumb without scrolling back through the record. */
+.m-sheet-foot {
+    flex-shrink: 0; display: flex; align-items: center; gap: 8px;
+    padding: 12px 18px calc(var(--v3-safe-bottom) + 16px);
+    border-top: 1px solid var(--v3-row-border);
+    background: rgba(20, 11, 6, 0.5);
+}
+.m-btn[disabled] { opacity: 0.45; }
+
+/* Admissions reuses the KPI strip for its pipeline counts, but these are
+   plain numbers with no delta line — let the cards sit narrower. */
+.m-kpi-strip .m-kpi { width: 116px; }
+
+/* ==========================================================================
+   TIMETABLE — DAY PICKER + AGENDA (Stage 7)
+   `Timetable.dc.html` was lost, but two instructions from the design
+   project's change log survived and are honoured: mobile is a **day picker
+   plus agenda** (never the desktop's seven-column grid), and a card shows the
+   batch name and its time slot rather than a stacked levels/teacher/room
+   block. The teacher stays on the agenda card — a card has room for one more
+   line where a grid tile does not.
+   ========================================================================== */
+
+.m-daypicker { margin-top: 10px; }
+
+.m-daychip {
+    flex-shrink: 0; display: flex; flex-direction: column; align-items: center; gap: 1px;
+    min-width: 48px; min-height: var(--v3-tap); padding: 6px 10px; cursor: pointer;
+    font-family: inherit; border-radius: 12px;
+    background: rgba(255, 255, 255, 0.7); color: var(--v3-ink);
+    border: 1px solid rgba(196, 155, 110, 0.3);
+}
+.m-daychip[aria-pressed="true"] { background: var(--v3-terracotta); border-color: var(--v3-terracotta); color: #fff; }
+/* Today is worth finding at a glance even when another day is selected. */
+.m-daychip[data-today="true"]:not([aria-pressed="true"]) { border-color: var(--v3-terracotta); border-width: 2px; }
+
+.m-daychip-name { font-size: 11px; font-weight: var(--weight-bold); letter-spacing: 0.02em; }
+.m-daychip-count { font-size: 11px; opacity: 0.85; display: inline-flex; align-items: center; gap: 3px; }
+/* A day with a register still to mark carries a dot — the whole reason to
+   scan this row before picking a day. */
+.m-daychip-dot { width: 5px; height: 5px; border-radius: 99px; background: var(--v3-negative); display: inline-block; }
+.m-daychip[aria-pressed="true"] .m-daychip-dot { background: #fff; }
+
+.m-slot {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    width: 100%; min-height: var(--v3-tap); padding: 13px 14px;
+    cursor: pointer; text-align: left; font-family: inherit;
+    border-left: 3px solid var(--v3-tone-neutral);
+}
+.m-slot[disabled] { cursor: default; opacity: 0.7; }
+.m-slot-main { flex: 1; min-width: 0; }
+.m-slot-name {
+    display: block; font-size: var(--text-base); font-weight: var(--weight-semibold);
+    color: var(--v3-name); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.m-slot-meta {
+    display: block; font-size: 11.5px; color: var(--v3-muted); margin-top: 2px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+.m-slot[data-state="marked"]      { border-left-color: var(--v3-positive); }
+.m-slot[data-state="due"]         { border-left-color: var(--v3-negative); background: rgba(224, 94, 74, 0.16); }
+.m-slot[data-state="upcoming"]    { border-left-color: var(--v3-tone-neutral); }
+.m-slot[data-state="cancelled"]   { border-left-color: var(--v3-muted); opacity: 0.55; }
+.m-slot[data-state="cancelled"] .m-slot-name { text-decoration: line-through; }
+.m-slot[data-state="replacement"] { border-left-color: var(--v3-caution); background: rgba(224, 166, 74, 0.14); }
+
+/* ==========================================================================
+   FEE COLLECTION (Stage 9)
+   Fees was never part of the Claude Design project at all, so there is not
+   even a lost file to reconcile against. Built from the v3 mobile system.
+   ========================================================================== */
+
+.m-badge[data-fee="overdue"] { background: rgba(224, 94, 74, 0.22); color: var(--v3-negative); }
+.m-badge[data-fee="due"]     { background: rgba(224, 166, 74, 0.2); color: var(--v3-caution); }
+.m-badge[data-fee="clear"]   { background: rgba(94, 166, 101, 0.2); color: var(--v3-positive); }
+
+.m-invoice {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 12px 14px; border-radius: 11px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--v3-row-border);
+    border-left: 3px solid var(--v3-caution);
+}
+.m-invoice[data-overdue="true"] {
+    border-left-color: var(--v3-negative);
+    background: rgba(224, 94, 74, 0.12);
+}
+.m-invoice-main { min-width: 0; flex: 1; }
+.m-invoice-no { font-size: var(--text-sm); font-weight: var(--weight-semibold); color: var(--v3-name); }
+.m-invoice-due { font-size: 11px; color: var(--v3-muted); margin-top: 2px; }
+.m-invoice-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.m-btn-sm { min-height: 36px; padding: 0 12px; font-size: var(--text-xs); }
+
+/* ---- the collect form (takes over the whole sheet) ---- */
+
+.m-field { display: flex; flex-direction: column; gap: 6px; }
+.m-field[hidden] { display: none; }
+.m-field > span, .m-field-label {
+    font-size: 11.5px; font-weight: var(--weight-semibold); color: var(--v3-muted);
+    display: block; margin-bottom: 6px;
+}
+.m-field > span { margin-bottom: 0; }
+
+.m-input {
+    width: 100%; min-height: var(--v3-tap); padding: 0 12px;
+    font: inherit; color: var(--v3-name);
+    /* 16px minimum, or iOS Safari zooms the page when the field takes focus. */
+    font-size: var(--text-md);
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid var(--v3-card-border);
+    border-radius: var(--v3-radius-item);
+}
+.m-input:focus {
+    outline: none; border-color: var(--v3-terracotta);
+    box-shadow: 0 0 0 3px rgba(180, 91, 52, 0.3);
+}
+/* The amount is the number being checked against cash in hand — make it the
+   biggest thing on the screen. */
+.m-input-amount {
+    font-size: 28px; font-weight: var(--weight-bold);
+    min-height: 60px; text-align: center; letter-spacing: 0.01em;
+}
+.m-input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.85); }
+
+/* Payment modes as tap targets rather than a dropdown: five options, chosen
+   constantly, and a native select on a phone is a modal roulette wheel. */
+.m-modes { display: flex; flex-wrap: wrap; gap: 8px; }
+.m-mode { position: relative; }
+.m-mode input { position: absolute; opacity: 0; pointer-events: none; }
+.m-mode span {
+    display: inline-flex; align-items: center; justify-content: center;
+    min-height: var(--v3-tap); padding: 0 16px; cursor: pointer;
+    font-size: var(--text-sm); font-weight: var(--weight-semibold);
+    color: var(--v3-name);
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--v3-card-border);
+    border-radius: var(--v3-radius-pill);
+}
+.m-mode input:checked + span {
+    background: var(--v3-terracotta); border-color: var(--v3-terracotta); color: #fff;
+}
+.m-mode input:focus-visible + span { box-shadow: 0 0 0 3px rgba(180, 91, 52, 0.4); }
+
+/* ==========================================================================
+   NOTIFICATIONS (Stage 10)
+   Never part of the Claude Design project. Severity comes from the service's
+   own centre() mapping — this only colours it.
+   ========================================================================== */
+
+.m-announce {
+    display: flex; align-items: center; gap: 10px;
+    width: 100%; min-height: var(--v3-tap); padding: 12px 14px; margin-bottom: 12px;
+    cursor: pointer; font-family: inherit; color: var(--v3-name);
+}
+.m-announce-icon {
+    flex-shrink: 0; width: 32px; height: 32px; display: grid; place-items: center;
+    border-radius: 9px; background: rgba(62, 125, 191, 0.2); color: #8FBFF0;
+}
+.m-announce-title { display: block; font-size: var(--text-sm); font-weight: var(--weight-semibold); }
+.m-announce-sub {
+    display: block; font-size: 11.5px; color: var(--v3-muted); margin-top: 1px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+.m-note { padding: 13px 14px; }
+/* Read rows recede rather than vanish — still a record, no longer a task. */
+.m-note[data-read="true"] { opacity: 0.6; }
+
+.m-note-head { display: flex; align-items: flex-start; gap: 10px; }
+.m-note-icon {
+    flex-shrink: 0; width: 32px; height: 32px; display: grid; place-items: center;
+    border-radius: 9px; background: var(--v3-ghost-bg); color: var(--v3-muted);
+}
+.m-note-icon[data-severity="error"]   { background: rgba(224, 94, 74, 0.2); color: var(--v3-negative); }
+.m-note-icon[data-severity="warning"] { background: rgba(224, 166, 74, 0.2); color: var(--v3-caution); }
+.m-note-icon[data-severity="success"] { background: rgba(94, 166, 101, 0.2); color: var(--v3-positive); }
+.m-note-icon[data-severity="info"]    { background: rgba(62, 125, 191, 0.2); color: #8FBFF0; }
+
+.m-note-title { font-size: var(--text-sm); font-weight: var(--weight-semibold); color: var(--v3-name); }
+.m-note-body  { font-size: 12.5px; color: var(--v3-muted); margin-top: 2px; }
+.m-note-when  { font-size: 11px; color: var(--v3-muted); margin-top: 4px; }
+
+.m-note-actions {
+    display: flex; align-items: center; justify-content: flex-end; gap: 8px;
+    margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--v3-row-border);
+}
+.m-icon-btn-sm {
+    width: 40px; height: 40px; min-height: 40px;
+    background: rgba(255, 255, 255, 0.08); border-color: var(--v3-card-border);
+    color: var(--v3-muted);
+}
+.m-icon-btn[disabled] { opacity: 0.4; }
+
+/* ---- my account (Stage 10) ---- */
+.m-identity {
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+    padding: 20px 16px; margin-bottom: 16px; text-align: center;
+}
+.m-identity-avatar {
+    width: 64px; height: 64px; display: grid; place-items: center;
+    font-size: 20px; font-weight: var(--weight-bold); color: var(--v3-cream);
+    background: var(--v3-terracotta-deep); border-radius: var(--v3-radius-pill);
+    margin-bottom: 4px;
+}
+.m-identity-name { font-size: var(--text-md); font-weight: var(--weight-bold); color: var(--v3-name); }
+.m-identity-role { font-size: 12px; color: var(--v3-muted); }
+
+/* ---- batches: seat-occupancy badges (Stage 11) ---- */
+.m-badge[data-seats="full"]  { background: rgba(224, 166, 74, 0.2); color: var(--v3-caution); }
+.m-badge[data-seats="empty"] { background: rgba(224, 94, 74, 0.2); color: var(--v3-negative); }
+.m-badge[data-seats="open"]  { background: rgba(94, 166, 101, 0.2); color: var(--v3-positive); }
+
+/* ---------------------------------------------------------------------------
+   NATIVE SELECT POPUPS
+   ---------------------------------------------------------------------------
+   The closed <select> is glass like every other input, but the *open* popup is
+   drawn by the OS, not by us: it cannot inherit backdrop-filter, and on
+   Windows/Chrome it paints on its own white sheet. Our inputs set
+   `color: var(--v3-name)` — white in both variants — so the options rendered
+   white-on-white and only the highlighted row was readable.
+
+   Options therefore get an explicit *opaque* surface. This is one of the few
+   places the glass language has to be abandoned rather than adapted, because
+   the element being styled is not ours to composite.
+   -------------------------------------------------------------------------- */
+.v3-input, .m-sheet-branch {
+    /* Chrome/Edge use this for the popup sheet itself, not just the rows. */
+    color-scheme: dark;
+}
+.v3-input option, .m-sheet-branch option,
+.v3-input optgroup, .m-sheet-branch optgroup {
+    background-color: #2A1710;
+    color: #FFFFFF;
+}
+.v3-input option:checked, .m-sheet-branch option:checked {
+    background-color: var(--v3-terracotta);
+    color: #FFFFFF;
+}
+.v3-input option:disabled, .m-sheet-branch option:disabled {
+    color: rgba(255, 255, 255, 0.45);
+}
+
+/* ==========================================================================
+   FORM MODALS  (js/ui/form.js)
+   --------------------------------------------------------------------------
+   A centred box, the same shape as natyam-admin's dialog — asked for directly,
+   replacing the full-height sheet this started as. The whole box scrolls as
+   one, so Cancel and Save are what you reach after the last field rather than
+   being pinned anywhere. Tapping the backdrop cancels.
+   ========================================================================== */
+
+.m-form-host { position: relative; z-index: var(--z-modal); }
+
+.m-modal-scrim {
+    position: fixed; inset: 0; z-index: var(--z-modal);
+    display: flex; align-items: center; justify-content: center;
+    padding: calc(var(--v3-safe-top) + 16px) 14px calc(var(--v3-safe-bottom) + 16px);
+    background: rgba(20, 11, 6, 0.55);
+    backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+}
+
+.m-modal {
+    width: 100%; max-width: 560px; max-height: 100%;
+    overflow-y: auto; -webkit-overflow-scrolling: touch;
+    background: var(--v3-card-bg);
+    backdrop-filter: blur(12px) saturate(136%); -webkit-backdrop-filter: blur(12px) saturate(136%);
+    border: 1px solid var(--v3-card-border);
+    border-radius: 18px;
+    box-shadow: 0 30px 70px rgba(0, 0, 0, 0.45);
+    animation: m-modal-in var(--duration-normal) var(--ease-entrance);
+}
+@keyframes m-modal-in { from { opacity: 0; transform: translateY(10px) scale(0.98); } to { opacity: 1; transform: none; } }
+
+.m-modal-head {
+    display: flex; align-items: flex-start; justify-content: space-between;
+    gap: 12px; padding: 18px 18px 0;
+}
+.m-modal-title { margin: 0; font-size: 18px; font-weight: var(--weight-semibold); color: var(--v3-name); }
+.m-modal-sub { margin: 4px 0 0; font-size: 12.5px; color: var(--v3-muted); }
+.m-modal-close {
+    flex-shrink: 0; width: 34px; height: 34px; display: grid; place-items: center; cursor: pointer;
+    background: var(--v3-ghost-bg); border: 1px solid var(--v3-card-border);
+    border-radius: var(--v3-radius-pill); color: var(--v3-name);
+}
+
+.m-modal-body {
+    display: flex; flex-direction: column; gap: 16px;
+    padding: 16px 18px 18px;
+}
+
+.m-modal-foot {
+    display: flex; gap: 10px;
+    padding: 14px 18px 18px;
+    border-top: 1px solid var(--v3-row-border);
+}
+.m-form-cancel, .m-form-save {
+    flex: 1; min-height: var(--v3-tap); padding: 0 14px; cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-family: inherit; font-size: var(--text-sm); font-weight: var(--weight-semibold);
+    border-radius: 12px;
+}
+.m-form-cancel {
+    background: var(--v3-ghost-bg); color: var(--v3-name);
+    border: 1px solid var(--v3-card-border);
+}
+.m-form-save {
+    background: var(--v3-terracotta); color: #fff; border: none;
+    font-weight: var(--weight-bold);
+}
+.m-form-cancel:disabled, .m-form-save:disabled { opacity: 0.45; cursor: default; }
+
+.m-modal-confirm .m-modal-body { padding-top: 12px; }
+
+/* ------------------------------------------------------------------ FIELDS */
+
+.m-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.m-field[hidden] { display: none; }
+.m-field > label {
+    font-size: var(--text-xs); font-weight: var(--weight-semibold); color: var(--v3-name);
+}
+.m-req { color: var(--v3-negative); margin-left: 3px; }
+.m-field-help  { font-size: 11.5px; color: var(--v3-muted); }
+.m-field-error { font-size: 12px; font-weight: var(--weight-semibold); color: var(--v3-negative); }
+
+.m-input {
+    width: 100%; min-height: var(--v3-tap); padding: 0 12px;
+    font: inherit;
+    /* 16px literal, NOT var(--text-base) — that token is 14px in this project.
+       A functional requirement, not a taste call: below 16px, iOS Safari zooms
+       the whole page in when a field takes focus and does not zoom back out. */
+    font-size: 16px;
+    color: var(--v3-name);
+    background: var(--v3-ghost-bg);
+    border: 1px solid var(--v3-card-border);
+    border-radius: 12px;
+}
+.m-input:focus-visible {
+    outline: none; border-color: var(--v3-terracotta);
+    box-shadow: 0 0 0 3px rgba(180, 91, 52, 0.3);
+}
+.m-textarea { min-height: 76px; padding: 10px 12px; resize: vertical; line-height: var(--leading-normal); }
+.m-field[data-invalid="true"] .m-input { border-color: var(--v3-negative); }
+
+/* The OS draws the open <select> popup on its own opaque sheet — it cannot
+   inherit the glass, and white-on-white is what you get without this. */
+.m-input { color-scheme: dark; }
+.m-input option, .m-input optgroup { background-color: #2A1710; color: #FFFFFF; }
+.m-input option:checked { background-color: var(--v3-terracotta); }
+
+.m-money-wrap { position: relative; display: block; }
+.m-money-prefix {
+    position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
+    font-size: 16px; color: var(--v3-muted); pointer-events: none;
+}
+.m-money-input { padding-left: 30px; }
+
+.m-checks { display: flex; flex-wrap: wrap; gap: 8px; }
+.m-check { cursor: pointer; }
+.m-check input { position: absolute; opacity: 0; width: 0; height: 0; pointer-events: none; }
+.m-check-chip {
+    display: inline-flex; align-items: center; min-height: 38px; padding: 0 14px;
+    font-size: var(--text-sm); font-weight: var(--weight-semibold); color: var(--v3-name);
+    background: var(--v3-ghost-bg);
+    border: 1px solid var(--v3-card-border);
+    border-radius: var(--v3-radius-pill);
+}
+.m-check input:checked + .m-check-chip {
+    background: var(--v3-terracotta); border-color: var(--v3-terracotta); color: #fff;
+}
+.m-check input:focus-visible + .m-check-chip { box-shadow: 0 0 0 3px rgba(180, 91, 52, 0.35); }
+.m-field[data-invalid="true"] .m-check-chip { border-color: var(--v3-negative); }
+
+.m-switch { display: inline-flex; align-items: center; gap: 12px; cursor: pointer; min-height: var(--v3-tap); }
+.m-switch input { position: absolute; opacity: 0; pointer-events: none; }
+.m-switch-track {
+    width: 46px; height: 28px; flex-shrink: 0; border-radius: var(--v3-radius-pill);
+    background: var(--v3-ghost-bg); border: 1px solid var(--v3-card-border);
+    position: relative; transition: background var(--duration-fast) var(--ease-standard);
+}
+.m-switch-track::after {
+    content: ''; position: absolute; top: 2px; left: 2px; width: 22px; height: 22px;
+    border-radius: 50%; background: #fff;
+    transition: transform var(--duration-fast) var(--ease-standard);
+}
+.m-switch input:checked + .m-switch-track { background: var(--v3-terracotta); border-color: var(--v3-terracotta); }
+.m-switch input:checked + .m-switch-track::after { transform: translateX(18px); }
+.m-switch-label { font-size: var(--text-sm); color: var(--v3-name); }
+
+.m-form-divider {
+    margin: 6px 0 0; padding-top: 16px;
+    border-top: 1px solid var(--v3-row-border);
+    font-size: 11px; font-weight: var(--weight-bold);
+    letter-spacing: 0.06em; text-transform: uppercase; color: var(--v3-muted);
+}
+.m-modal-body > .m-form-divider:first-child { margin-top: 0; padding-top: 0; border-top: none; }
+
+/* Long tick-box groups — a filter, a running count, and a capped height so a
+   158-student cast picker cannot push the footer out of reach in a dialog. */
+.m-checks-wrap { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.m-checks-filter { min-height: 40px; }
+.m-checks-wrap .m-checks { max-height: 240px; overflow-y: auto; padding-right: 2px; }
+.m-check[hidden] { display: none; }
+
+/* Horizontal income/expenditure bars for the finance trend. */
+.m-trend { display: flex; flex-direction: column; gap: 4px; }
+.m-trend-bar { display: block; height: 6px; border-radius: 3px; min-width: 2px; }
+.m-trend-bar[data-tone="positive"] { background: var(--v3-positive); }
+.m-trend-bar[data-tone="negative"] { background: var(--v3-negative); }

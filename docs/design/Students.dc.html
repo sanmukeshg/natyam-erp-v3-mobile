@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+  body{margin:0;font-family:"Segoe UI",system-ui,-apple-system,"Helvetica Neue","Noto Sans",sans-serif;}
+  a{color:#9A5A32;text-decoration:none;}
+  a:hover{color:#7A431F;text-decoration:underline;}
+  ::-webkit-scrollbar{width:8px;height:8px;}
+  ::-webkit-scrollbar-thumb{background:rgba(122,67,31,0.35);border-radius:99px;}
+  button,a{transition:background 180ms ease,box-shadow 180ms ease,transform 180ms ease,color 180ms ease;}
+  .nsrow-dark:hover{background:rgba(255,248,239,0.14) !important;}
+  .nsrow-light:hover{background:rgba(58,32,20,0.08) !important;}
+  .nscard:hover{box-shadow:0 10px 26px rgba(58,32,20,0.16) !important;transform:translateY(-1px);}
+</style>
+<script component-from-global-scope="ChromeWindow" from="./browser-window.jsx"></script>
+<script component-from-global-scope="IOSDevice" from="./ios-frame.jsx"></script>
+</helmet>
+
+<div data-screen-label="Students" style="min-height:100vh;padding:32px;box-sizing:border-box;background:url('assets/desktop-bg-ref.png') center/cover no-repeat;display:flex;flex-direction:column;align-items:center;gap:24px;">
+
+  <div style="width:100%;max-width:1500px;display:flex;align-items:center;justify-content:space-between;gap:24px;flex-wrap:wrap;">
+    <div>
+      <div style="font-size:24px;font-weight:700;color:{{ T_titleColor }};letter-spacing:-0.01em;text-shadow:{{ T_titleShadow }};">Natyam ERP — Students</div>
+      <div style="font-size:13px;color:{{ T_subColor }};margin-top:3px;">Desktop &amp; Mobile experiences share the same data</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;">
+      <div style="display:flex;background:rgba(255,248,239,0.16);backdrop-filter:blur(8px) saturate(136%);-webkit-backdrop-filter:blur(8px) saturate(136%);border:1px solid rgba(255,248,239,0.3);border-radius:12px;padding:4px;gap:4px;">
+        <button onclick="{{ setDevice_desktop }}" style="{{ deviceBtnStyle_desktop }}">Desktop</button>
+        <button onclick="{{ setDevice_mobile }}" style="{{ deviceBtnStyle_mobile }}">Mobile</button>
+      </div>
+      <button onclick="{{ toggleTheme }}" style="display:flex;align-items:center;gap:7px;height:36px;padding:0 13px;font-size:12px;font-weight:600;background:rgba(255,248,239,0.16);backdrop-filter:blur(8px) saturate(136%);-webkit-backdrop-filter:blur(8px) saturate(136%);border:1px solid rgba(255,248,239,0.3);border-radius:10px;color:#FFF8EF;cursor:pointer;">
+        <span style="width:15px;height:15px;display:block;" dangerouslySetInnerHTML="{{ icon_theme }}"></span>{{ themeLabel }}
+      </button>
+    </div>
+  </div>
+
+  <sc-if value="{{ isDesktop }}" hint-placeholder-val="{{ true }}">
+    <div style="width:100%;max-width:1500px;">
+      <x-import component-from-global-scope="ChromeWindow" from="./browser-window.jsx" url="app.natyamschool.in/students" width="1440" height="900" hint-size="1440,900">
+
+        <div style="display:grid;grid-template-columns:{{ sidebarWidth }} minmax(0,1fr);height:100%;background:url('assets/desktop-bg-ref.png') center/cover no-repeat;overflow:hidden;position:relative;">
+
+          <aside style="background:{{ T_sidebarBg }};border-right:1px solid {{ T_sidebarBorder }};box-shadow:{{ T_sidebarShadow }};display:flex;flex-direction:column;height:100%;overflow:hidden;position:relative;z-index:1;">
+            <div style="display:flex;align-items:center;gap:12px;height:56px;padding:0 16px;border-bottom:1px solid {{ T_sidebarBorder }};flex-shrink:0;">
+              <img src="assets/natyam-logo.png" alt="NATYAM" style="width:32px;height:32px;flex-shrink:0;border-radius:8px;object-fit:cover;">
+              <div style="min-width:0;overflow:hidden;">
+                <div style="font-family:Georgia,serif;font-weight:700;font-size:14px;letter-spacing:0.02em;color:{{ T_navActiveColor }};white-space:nowrap;">NATYAM</div>
+                <div style="font-size:11px;color:{{ T_navLabelColor }};white-space:nowrap;">School of Kuchipudi</div>
+              </div>
+            </div>
+            <nav style="flex:1;padding:8px 12px 16px;overflow-y:auto;">
+              <sc-for list="{{ navGroups }}" as="group" hint-placeholder-count="5">
+                <div style="margin-top:16px;">
+                  <div style="padding:0 12px 8px;font-size:11px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:{{ T_navLabelColor }};">{{ group.label }}</div>
+                  <sc-for list="{{ group.items }}" as="item" hint-placeholder-count="3">
+                    <a href="{{ item.href }}" style="position:relative;display:flex;align-items:center;gap:12px;height:34px;padding:0 12px;font-size:13px;font-weight:500;color:{{ item.color }};background:{{ item.bg }};border-radius:9px;margin-bottom:1px;">
+                      <span style="width:18px;height:18px;flex-shrink:0;display:block;" dangerouslySetInnerHTML="{{ item.iconSvg }}"></span>
+                      <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ item.label }}</span>
+                    </a>
+                  </sc-for>
+                </div>
+              </sc-for>
+            </nav>
+          </aside>
+
+          <div style="display:flex;flex-direction:column;min-width:0;height:100%;overflow:hidden;">
+            <header style="flex-shrink:0;display:flex;align-items:center;gap:12px;height:56px;padding:0 24px;background:rgba(255,248,239,0.45);border-bottom:1px solid rgba(255,248,239,0.35);">
+              <div style="flex:1 1 auto;max-width:460px;">
+                <button style="display:flex;align-items:center;gap:8px;width:100%;height:34px;padding:0 8px 0 12px;font-size:13px;color:#6B5642;background:rgba(255,255,255,0.55);border:1px solid rgba(255,255,255,0.6);border-radius:9px;">
+                  <span style="width:15px;height:15px;display:block;" dangerouslySetInnerHTML="{{ icon_search }}"></span><span>Search students, receipts, batches…</span>
+                </button>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;margin-left:auto;">
+                <span style="width:26px;height:26px;display:grid;place-items:center;font-size:11px;font-weight:700;color:#FFF8EF;background:#8C4A28;border-radius:99px;">PK</span>
+                <span style="text-align:left;">
+                  <span style="display:block;font-size:13px;font-weight:600;color:#3A2013;">Priya Kumar</span>
+                  <span style="display:block;font-size:11px;font-weight:600;color:#3A2013;margin-top:1px;">Owner &amp; Accountant</span>
+                </span>
+              </div>
+            </header><main style="flex:1;overflow-y:auto;background:url('assets/desktop-bg-ref.png') center/cover no-repeat;">
+              <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:24px 24px 16px;flex-wrap:wrap;">
+                <div>
+                  <h1 style="font-size:24px;font-weight:700;letter-spacing:-0.011em;color:{{ T_titleColor }};margin:0;text-shadow:{{ T_titleShadow }};">Students</h1>
+                  <p style="font-size:13px;color:{{ T_subColor }};margin:5px 0 0;text-shadow:{{ T_titleShadow }};">{{ rollSubtitle }}</p>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                  <button onclick="{{ toggleFilters }}" style="display:inline-flex;align-items:center;gap:8px;height:34px;padding:0 14px;font-size:12px;font-weight:600;background:{{ filterBtnBg }};color:{{ filterBtnColor }};border:{{ filterBtnBorder }};backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);border-radius:9px;cursor:pointer;">
+                    <span style="width:14px;height:14px;display:block;" dangerouslySetInnerHTML="{{ icon_filter }}"></span> Filter
+                  </button>
+                  <button style="display:inline-flex;align-items:center;gap:8px;height:34px;padding:0 16px;font-size:12px;font-weight:700;background:#B45B34;color:#fff;border:none;border-radius:9px;cursor:pointer;box-shadow:0 4px 12px rgba(180,91,52,0.35);">
+                    <span style="width:14px;height:14px;display:block;" dangerouslySetInnerHTML="{{ icon_plus }}"></span> Add student
+                  </button>
+                </div>
+              </div><div style="padding:0 24px 40px;max-width:1180px;display:flex;flex-direction:column;gap:16px;">
+
+                <sc-if value="{{ filtersOpen }}" hint-placeholder-val="{{ false }}">
+                  <section style="background:rgba(255,255,255,0.65);backdrop-filter:blur(7px) saturate(136%);-webkit-backdrop-filter:blur(7px) saturate(136%);border:1px solid rgba(196,155,110,0.3);border-radius:14px;padding:16px 20px;display:flex;gap:8px;flex-wrap:wrap;box-shadow:0 6px 20px rgba(58,32,20,0.08);">
+                    <sc-for list="{{ quickChips }}" as="chip" hint-placeholder-count="4">
+                      <button onclick="{{ chip.onClick }}" style="height:30px;padding:0 13px;font-size:12px;font-weight:600;border-radius:99px;background:{{ chip.bg }};color:{{ chip.color }};border:{{ chip.border }};cursor:pointer;">{{ chip.label }}</button>
+                    </sc-for>
+                  </section>
+                </sc-if>
+
+                <section class="nscard" style="background: {{ T_cardBg }}; backdrop-filter: blur(10px) saturate(128%); -webkit-backdrop-filter: blur(10px) saturate(128%); border: 1px solid {{ T_cardBorder }}; border-radius: 16px; box-shadow: {{ T_cardShadow }}; align-self: flex-start; width: 609px; padding: 12px 16px; height: 461px; overflow-y: auto;">
+                  <sc-for list="{{ rows }}" as="row" hint-placeholder-count="8">
+                    <div class="{{ rowHoverClass }}" onclick="{{ row.onClick }}" style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:7px 8px;border-bottom:1px solid {{ T_rowBorder }};border-radius:9px;cursor:pointer;">
+                      <div style="display:flex;align-items:center;gap:14px;min-width:0;">
+                        <span style="width:22px;flex-shrink:0;font-size:12px;color:{{ T_subColor }};text-align:right;">{{ row.index }}</span>
+                        <div style="min-width:0;">
+                          <div style="font-size:13px;font-weight:600;color:{{ T_nameColor }};white-space:nowrap;">{{ row.name }}</div>
+                          <div style="font-size:11px;color:{{ T_subColor }};margin-top:0;">{{ row.batchLabel }}</div>
+                        </div>
+                      </div>
+                      <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
+                        <span style="display:inline-flex;padding:2px 8px;font-size:10.5px;font-weight:700;border-radius:6px;background:{{ row.feeBg }};color:{{ row.feeText }};border:1px solid {{ row.feeBorder }};">{{ row.feeLabel }}</span>
+                        <span style="display:inline-flex;padding:2px 8px;font-size:10.5px;font-weight:700;border-radius:6px;background:{{ row.statusBg }};color:{{ row.statusText }};border:1px solid {{ row.statusBorder }};">{{ row.status }}</span>
+                      </div>
+                    </div>
+                  </sc-for>
+                </section>
+              </div>
+
+              
+            </main>
+
+            
+          </div>
+        </div>
+
+        <sc-if value="{{ profile }}" hint-placeholder-val="{{ false }}">
+          <div onclick="{{ closeProfile }}" style="position:absolute;inset:0;z-index:50;background:rgba(20,11,6,0.55);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;padding:32px;">
+            <div onclick="{{ stop }}" style="width:100%;max-width:700px;max-height:100%;overflow-y:auto;background:{{ T_cardBg }};backdrop-filter:blur(12px) saturate(136%);-webkit-backdrop-filter:blur(12px) saturate(136%);border:1px solid {{ T_cardBorder }};border-radius:18px;box-shadow:0 30px 70px rgba(0,0,0,0.4);">
+              <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:22px 24px 0;">
+                <div>
+                  <h2 style="font-size:19px;font-weight:600;margin:0;color:{{ T_nameColor }};">{{ profile.student.name }}</h2>
+                  <p style="font-size:12.5px;color:{{ T_subColor }};margin:4px 0 0;">{{ profile.subtitle }}</p>
+                </div>
+                <button onclick="{{ closeProfile }}" style="flex-shrink:0;width:30px;height:30px;display:grid;place-items:center;background:rgba(255,255,255,0.12);border:1px solid {{ T_cardBorder }};border-radius:99px;color:{{ T_nameColor }};cursor:pointer;font-size:14px;">✕</button>
+              </div>
+
+              <div style="display:flex;flex-wrap:wrap;gap:8px;padding:16px 24px 0;">
+                <button style="height:32px;padding:0 13px;font-size:12px;font-weight:600;background:#B45B34;color:#fff;border:none;border-radius:8px;cursor:pointer;">Move batch</button>
+                <button style="height:32px;padding:0 13px;font-size:12px;font-weight:600;background:#B45B34;color:#fff;border:none;border-radius:8px;cursor:pointer;">Collect fee</button>
+                <button style="height:32px;padding:0 13px;font-size:12px;font-weight:600;background:#B45B34;color:#fff;border:none;border-radius:8px;cursor:pointer;">Promote</button>
+                <button style="height:32px;padding:0 13px;font-size:12px;font-weight:600;background:#B45B34;color:#fff;border:none;border-radius:8px;cursor:pointer;">Status</button>
+                <button style="height:32px;padding:0 13px;font-size:12px;font-weight:600;background:#B45B34;color:#fff;border:none;border-radius:8px;cursor:pointer;">Issue certificate</button>
+              </div>
+
+              <div style="display:flex;gap:4px;padding:16px 24px 0;border-bottom:1px solid {{ T_rowBorder }};overflow-x:auto;">
+                <sc-for list="{{ profile.tabs }}" as="tab" hint-placeholder-count="6">
+                  <button onclick="{{ tab.onClick }}" style="flex-shrink:0;height:32px;padding:0 13px;font-size:12.5px;font-weight:500;background:{{ tab.bg }};color:{{ tab.color }};border:none;border-radius:7px 7px 0 0;cursor:pointer;">{{ tab.label }}</button>
+                </sc-for>
+              </div>
+
+              <div style="padding:20px 24px 24px;display:flex;flex-direction:column;gap:14px;">
+                <sc-if value="{{ profile.isOverview }}" hint-placeholder-val="{{ true }}">
+                  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;">
+                    <div style="background:rgba(255,255,255,0.06);border:1px solid {{ T_rowBorder }};border-radius:11px;padding:12px 14px;"><div style="font-size:10.5px;color:{{ T_subColor }};text-transform:uppercase;letter-spacing:0.04em;">Attendance, 90 days</div><div style="font-size:18px;font-weight:600;color:{{ T_nameColor }};margin-top:4px;">{{ profile.attendanceRecent }}</div></div>
+                    <div style="background:rgba(255,255,255,0.06);border:1px solid {{ T_rowBorder }};border-radius:11px;padding:12px 14px;"><div style="font-size:10.5px;color:{{ T_subColor }};text-transform:uppercase;letter-spacing:0.04em;">Fees outstanding</div><div style="font-size:18px;font-weight:600;color:{{ T_nameColor }};margin-top:4px;">{{ profile.feesOutstanding }}</div></div>
+                    <div style="background:rgba(255,255,255,0.06);border:1px solid {{ T_rowBorder }};border-radius:11px;padding:12px 14px;"><div style="font-size:10.5px;color:{{ T_subColor }};text-transform:uppercase;letter-spacing:0.04em;">With the school</div><div style="font-size:18px;font-weight:600;color:{{ T_nameColor }};margin-top:4px;">{{ profile.tenureMonths }} months</div></div>
+                  </div>
+                  <sc-if value="{{ profile.notPlaced }}" hint-placeholder-val="{{ false }}">
+                    <div style="padding:12px 14px;background:rgba(214,164,44,0.16);border:1px solid rgba(214,164,44,0.4);border-radius:10px;font-size:12.5px;color:{{ T_nameColor }};">Not in a batch — appears on no register.</div>
+                  </sc-if>
+                  <sc-if value="{{ profile.medicalNotes }}" hint-placeholder-val="{{ false }}">
+                    <div style="padding:12px 14px;background:rgba(94,166,101,0.14);border:1px solid rgba(94,166,101,0.3);border-radius:10px;font-size:12.5px;color:{{ T_nameColor }};"><strong>Medical note:</strong> {{ profile.medicalNotes }}</div>
+                  </sc-if>
+                  <div style="background:rgba(255,255,255,0.05);border:1px solid {{ T_rowBorder }};border-radius:11px;padding:14px 16px;font-size:13px;color:{{ T_nameColor }};display:flex;flex-direction:column;gap:8px;">
+                    <div style="display:flex;justify-content:space-between;"><span style="color:{{ T_subColor }};">Level</span><span>{{ profile.student.level }}</span></div>
+                    <div style="display:flex;justify-content:space-between;"><span style="color:{{ T_subColor }};">Batch</span><span>{{ profile.student.batchName }}</span></div>
+                    <div style="display:flex;justify-content:space-between;"><span style="color:{{ T_subColor }};">Status</span><span>{{ profile.student.status }}</span></div>
+                    <div style="display:flex;justify-content:space-between;"><span style="color:{{ T_subColor }};">Joined</span><span>{{ profile.joinedLong }}</span></div>
+                  </div>
+                </sc-if>
+                <sc-if value="{{ profile.isFees }}" hint-placeholder-val="{{ false }}">
+                  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;">
+                    <div style="background:rgba(255,255,255,0.06);border:1px solid {{ T_rowBorder }};border-radius:11px;padding:12px 14px;"><div style="font-size:10.5px;color:{{ T_subColor }};text-transform:uppercase;">Billed</div><div style="font-size:18px;font-weight:600;color:{{ T_nameColor }};margin-top:4px;">{{ profile.billed }}</div></div>
+                    <div style="background:rgba(255,255,255,0.06);border:1px solid {{ T_rowBorder }};border-radius:11px;padding:12px 14px;"><div style="font-size:10.5px;color:{{ T_subColor }};text-transform:uppercase;">Collected</div><div style="font-size:18px;font-weight:600;color:{{ T_nameColor }};margin-top:4px;">{{ profile.collected }}</div></div>
+                    <div style="background:rgba(255,255,255,0.06);border:1px solid {{ T_rowBorder }};border-radius:11px;padding:12px 14px;"><div style="font-size:10.5px;color:{{ T_subColor }};text-transform:uppercase;">Outstanding</div><div style="font-size:18px;font-weight:600;color:{{ T_nameColor }};margin-top:4px;">{{ profile.feesOutstanding }}</div></div>
+                  </div>
+                </sc-if>
+                <sc-if value="{{ profile.isAttendance }}" hint-placeholder-val="{{ false }}">
+                  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;">
+                    <div style="background:rgba(255,255,255,0.06);border:1px solid {{ T_rowBorder }};border-radius:11px;padding:12px 14px;"><div style="font-size:10.5px;color:{{ T_subColor }};text-transform:uppercase;">All time</div><div style="font-size:18px;font-weight:600;color:{{ T_nameColor }};margin-top:4px;">{{ profile.attendanceAll }}</div></div>
+                    <div style="background:rgba(255,255,255,0.06);border:1px solid {{ T_rowBorder }};border-radius:11px;padding:12px 14px;"><div style="font-size:10.5px;color:{{ T_subColor }};text-transform:uppercase;">Last 90 days</div><div style="font-size:18px;font-weight:600;color:{{ T_nameColor }};margin-top:4px;">{{ profile.attendanceRecent }}</div></div>
+                    <div style="background:rgba(255,255,255,0.06);border:1px solid {{ T_rowBorder }};border-radius:11px;padding:12px 14px;"><div style="font-size:10.5px;color:{{ T_subColor }};text-transform:uppercase;">Since</div><div style="font-size:18px;font-weight:600;color:{{ T_nameColor }};margin-top:4px;">{{ profile.joinedLong }}</div></div>
+                  </div>
+                </sc-if>
+                <sc-if value="{{ profile.isPeople }}" hint-placeholder-val="{{ false }}">
+                  <div style="background:rgba(255,255,255,0.05);border:1px solid {{ T_rowBorder }};border-radius:11px;padding:14px 16px;font-size:13px;color:{{ T_nameColor }};display:flex;flex-direction:column;gap:8px;">
+                    <div style="display:flex;justify-content:space-between;"><span style="color:{{ T_subColor }};">Name</span><span>{{ profile.guardianName }}</span></div>
+                    <div style="display:flex;justify-content:space-between;"><span style="color:{{ T_subColor }};">Relationship</span><span>{{ profile.guardianRelation }}</span></div>
+                    <div style="display:flex;justify-content:space-between;"><span style="color:{{ T_subColor }};">Phone</span><span>{{ profile.guardianPhone }}</span></div>
+                  </div>
+                </sc-if>
+                <sc-if value="{{ profile.isRecords }}" hint-placeholder-val="{{ false }}">
+                  <p style="font-size:13px;color:{{ T_subColor }};margin:0;">No certificates issued yet.</p>
+                </sc-if>
+                <sc-if value="{{ profile.isHistory }}" hint-placeholder-val="{{ false }}">
+                  <p style="font-size:13px;color:{{ T_subColor }};margin:0;">Enrolled on {{ profile.joinedLong }}.</p>
+                </sc-if>
+              </div>
+
+              <div style="display:flex;align-items:center;justify-content:flex-end;gap:8px;padding:14px 24px 22px;border-top:1px solid {{ T_rowBorder }};">
+                <button onclick="{{ closeProfile }}" style="height:34px;padding:0 16px;font-size:12.5px;font-weight:600;background:rgba(255,255,255,0.1);color:{{ T_nameColor }};border:1px solid {{ T_cardBorder }};border-radius:9px;cursor:pointer;">Close</button>
+                <button style="height:34px;padding:0 16px;font-size:12.5px;font-weight:600;background:#B45B34;color:#fff;border:none;border-radius:9px;cursor:pointer;">Edit</button>
+                <button style="height:34px;padding:0 6px;font-size:12.5px;font-weight:600;background:none;color:#D97848;border:none;cursor:pointer;margin-left:6px;">Archive</button>
+                <button style="height:34px;padding:0 6px;font-size:12.5px;font-weight:600;background:none;color:#E05E4A;border:none;cursor:pointer;">Delete</button>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+      </x-import>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ isMobile }}" hint-placeholder-val="{{ false }}">
+    <div style="width:100%;max-width:420px;">
+      <x-import component-from-global-scope="IOSDevice" from="./ios-frame.jsx" hint-size="402,874">
+        <div style="display:flex;flex-direction:column;height:100%;background:url('assets/mobile-bg-ref.png') center/cover no-repeat;position:relative;overflow:hidden;">
+
+          <div style="flex-shrink:0;padding:62px 16px 12px;background:{{ T_mobileHeaderBg }};border-bottom:1px solid rgba(255,248,239,0.35);">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+              <div style="min-width:0;flex:1;">
+                <div style="font-size:20px;font-weight:700;color:{{ T_mobileTitleColor }};">Students</div>
+                <div style="font-size:12px;color:{{ T_mobileSubColor }};font-weight:600;margin-top:1px;">{{ rollSubtitle }}</div>
+              </div>
+            </div>
+            <div style="display:flex;gap:8px;">
+              <div style="flex:1;display:flex;align-items:center;gap:8px;height:42px;padding:0 12px;font-size:13px;border:1px solid rgba(196,155,110,0.3);border-radius:12px;background:rgba(255,255,255,0.75);color:#6B5642;">
+                <span style="width:15px;height:15px;flex-shrink:0;display:block;" dangerouslySetInnerHTML="{{ icon_search }}"></span>
+                <span>Search name, guardian, phone…</span>
+              </div>
+              <button onclick="{{ toggleFilters }}" style="flex-shrink:0;width:42px;height:42px;display:grid;place-items:center;background:{{ filterBtnBg }};border:{{ filterBtnBorder }};border-radius:12px;color:{{ filterBtnColor }};">
+                <span style="width:16px;height:16px;display:block;" dangerouslySetInnerHTML="{{ icon_filter }}"></span>
+              </button>
+            </div>
+            <sc-if value="{{ filtersOpen }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;gap:6px;overflow-x:auto;margin:10px -16px 0;padding:0 16px 2px;">
+                <sc-for list="{{ quickChips }}" as="chip" hint-placeholder-count="4">
+                  <button onclick="{{ chip.onClick }}" style="flex-shrink:0;height:33px;padding:0 13px;font-size:12px;font-weight:600;border-radius:99px;background:{{ chip.bg }};color:{{ chip.color }};border:{{ chip.border }};">{{ chip.label }}</button>
+                </sc-for>
+              </div>
+            </sc-if>
+          </div>
+
+          <div style="flex:1;overflow-y:auto;padding:12px 16px 16px;display:flex;flex-direction:column;gap:10px;">
+            <sc-for list="{{ rows }}" as="row" hint-placeholder-count="6">
+              <div class="nscard" onclick="{{ row.onClick }}" style="display:flex;align-items:center;gap:12px;background:{{ T_cardBg }};backdrop-filter:blur(10px) saturate(128%);-webkit-backdrop-filter:blur(10px) saturate(128%);border:1px solid {{ T_cardBorder }};border-radius:14px;padding:13px 14px;box-shadow:{{ T_cardShadow }};cursor:pointer;">
+                <span style="width:22px;flex-shrink:0;font-size:12px;color:{{ T_batchColor }};text-align:right;">{{ row.index }}</span>
+                <div style="flex:1;min-width:0;">
+                  <div style="font-size:14px;font-weight:600;color:{{ T_nameColor }};">{{ row.name }}</div>
+                  <div style="font-size:11.5px;color:{{ T_batchColor }};margin-top:2px;">{{ row.batchLabel }}</div>
+                </div>
+                <span style="flex-shrink:0;padding:4px 9px;font-size:11px;font-weight:700;border-radius:6px;background:{{ row.feeBg }};color:{{ row.feeText }};border:1px solid {{ row.feeBorder }};">{{ row.feeLabel }}</span>
+              </div>
+            </sc-for>
+          </div>
+
+          <button style="position:absolute;right:16px;bottom:90px;z-index:10;width:54px;height:54px;display:grid;place-items:center;background:rgba(180,91,52,0.88);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);color:#fff;border:1px solid rgba(255,248,239,0.35);border-radius:99px;box-shadow:0 8px 22px rgba(180,91,52,0.45);">
+            <span style="width:22px;height:22px;display:block;" dangerouslySetInnerHTML="{{ icon_plus_lg }}"></span>
+          </button>
+
+          <sc-if value="{{ profile }}" hint-placeholder-val="{{ false }}">
+            <div onclick="{{ closeProfile }}" style="position:absolute;inset:0;z-index:50;background:rgba(20,11,6,0.6);display:flex;align-items:center;justify-content:center;padding:20px;">
+              <div onclick="{{ stop }}" style="width:100%;height:78%;max-height:78%;overflow:hidden;background:{{ T_cardBg }};backdrop-filter:blur(12px) saturate(136%);-webkit-backdrop-filter:blur(12px) saturate(136%);border:1px solid {{ T_cardBorder }};border-radius:18px;box-shadow:0 24px 60px rgba(0,0,0,0.4);display:flex;flex-direction:column;">
+                <div style="flex-shrink:0;display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:18px 18px 0;">
+                  <div style="min-width:0;">
+                    <h2 style="font-size:16px;font-weight:600;margin:0;color:{{ T_nameColor }};">{{ profile.student.name }}</h2>
+                    <p style="font-size:11.5px;color:{{ T_subColor }};margin:3px 0 0;">{{ profile.subtitle }}</p>
+                  </div>
+                  <button onclick="{{ closeProfile }}" style="flex-shrink:0;width:28px;height:28px;display:grid;place-items:center;background:rgba(255,255,255,0.12);border:1px solid {{ T_cardBorder }};border-radius:99px;color:{{ T_nameColor }};cursor:pointer;font-size:13px;">×</button>
+                </div>
+
+                <div style="flex-shrink:0;display:flex;gap:4px;padding:14px 18px 0;border-bottom:1px solid {{ T_rowBorder }};overflow-x:auto;">
+                  <sc-for list="{{ profile.tabs }}" as="tab" hint-placeholder-count="6">
+                    <button onclick="{{ tab.onClick }}" style="flex-shrink:0;height:30px;padding:0 11px;font-size:11.5px;font-weight:500;background:{{ tab.bg }};color:{{ tab.color }};border:none;border-radius:7px 7px 0 0;cursor:pointer;">{{ tab.label }}</button>
+                  </sc-for>
+                </div>
+
+                <div style="flex:1;overflow-y:auto;padding:16px 18px 20px;display:flex;flex-direction:column;gap:12px;">
+                  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">
+                    <sc-if value="{{ profile.isOverview }}" hint-placeholder-val="{{ true }}">
+                      <div style="background:rgba(255,255,255,0.06);border:1px solid {{ T_rowBorder }};border-radius:10px;padding:9px 10px;"><div style="font-size:9.5px;color:{{ T_subColor }};text-transform:uppercase;">Attend.</div><div style="font-size:14px;font-weight:600;color:{{ T_nameColor }};margin-top:2px;">{{ profile.attendanceRecent }}</div></div>
+                      <div style="background:rgba(255,255,255,0.06);border:1px solid {{ T_rowBorder }};border-radius:10px;padding:9px 10px;"><div style="font-size:9.5px;color:{{ T_subColor }};text-transform:uppercase;">Fees due</div><div style="font-size:14px;font-weight:600;color:{{ T_nameColor }};margin-top:2px;">{{ profile.feesOutstanding }}</div></div>
+                      <div style="background:rgba(255,255,255,0.06);border:1px solid {{ T_rowBorder }};border-radius:10px;padding:9px 10px;"><div style="font-size:9.5px;color:{{ T_subColor }};text-transform:uppercase;">Tenure</div><div style="font-size:14px;font-weight:600;color:{{ T_nameColor }};margin-top:2px;">{{ profile.tenureMonths }}mo</div></div>
+                    </sc-if>
+                  </div>
+                  <sc-if value="{{ profile.isFees }}" hint-placeholder-val="{{ false }}">
+                    <div style="background:rgba(255,255,255,0.05);border:1px solid {{ T_rowBorder }};border-radius:11px;padding:12px 14px;font-size:12.5px;color:{{ T_nameColor }};display:flex;flex-direction:column;gap:6px;">
+                      <div style="display:flex;justify-content:space-between;"><span style="color:{{ T_subColor }};">Billed</span><span>{{ profile.billed }}</span></div>
+                      <div style="display:flex;justify-content:space-between;"><span style="color:{{ T_subColor }};">Collected</span><span>{{ profile.collected }}</span></div>
+                      <div style="display:flex;justify-content:space-between;"><span style="color:{{ T_subColor }};">Outstanding</span><span>{{ profile.feesOutstanding }}</span></div>
+                    </div>
+                  </sc-if>
+                  <sc-if value="{{ profile.isAttendance }}" hint-placeholder-val="{{ false }}">
+                    <div style="background:rgba(255,255,255,0.05);border:1px solid {{ T_rowBorder }};border-radius:11px;padding:12px 14px;font-size:12.5px;color:{{ T_nameColor }};display:flex;flex-direction:column;gap:6px;">
+                      <div style="display:flex;justify-content:space-between;"><span style="color:{{ T_subColor }};">All time</span><span>{{ profile.attendanceAll }}</span></div>
+                      <div style="display:flex;justify-content:space-between;"><span style="color:{{ T_subColor }};">Last 90 days</span><span>{{ profile.attendanceRecent }}</span></div>
+                    </div>
+                  </sc-if>
+                  <sc-if value="{{ profile.isPeople }}" hint-placeholder-val="{{ false }}">
+                    <div style="background:rgba(255,255,255,0.05);border:1px solid {{ T_rowBorder }};border-radius:11px;padding:12px 14px;font-size:12.5px;color:{{ T_nameColor }};display:flex;flex-direction:column;gap:6px;">
+                      <div style="display:flex;justify-content:space-between;"><span style="color:{{ T_subColor }};">Guardian</span><span>{{ profile.guardianName }}</span></div>
+                      <div style="display:flex;justify-content:space-between;"><span style="color:{{ T_subColor }};">Phone</span><span>{{ profile.guardianPhone }}</span></div>
+                    </div>
+                  </sc-if>
+                  <sc-if value="{{ profile.isRecords }}" hint-placeholder-val="{{ false }}">
+                    <p style="font-size:12.5px;color:{{ T_subColor }};margin:0;">No certificates issued yet.</p>
+                  </sc-if>
+                  <sc-if value="{{ profile.isHistory }}" hint-placeholder-val="{{ false }}">
+                    <p style="font-size:12.5px;color:{{ T_subColor }};margin:0;">Enrolled on {{ profile.joinedLong }}.</p>
+                  </sc-if>
+                </div>
+
+                <div style="flex-shrink:0;display:flex;align-items:center;justify-content:flex-end;gap:8px;padding:12px 18px 18px;border-top:1px solid {{ T_rowBorder }};">
+                  <button onclick="{{ closeProfile }}" style="height:32px;padding:0 14px;font-size:12px;font-weight:600;background:rgba(255,255,255,0.1);color:{{ T_nameColor }};border:1px solid {{ T_cardBorder }};border-radius:9px;cursor:pointer;">Close</button>
+                  <button style="height:32px;padding:0 14px;font-size:12px;font-weight:600;background:#B45B34;color:#fff;border:none;border-radius:9px;cursor:pointer;">Edit</button>
+                  <button style="height:32px;padding:0 6px;font-size:12px;font-weight:600;background:none;color:#D97848;border:none;cursor:pointer;margin-left:4px;">Archive</button>
+                  <button style="height:32px;padding:0 6px;font-size:12px;font-weight:600;background:none;color:#E05E4A;border:none;cursor:pointer;">Delete</button>
+                </div>
+              </div>
+            </div>
+          </sc-if>
+
+          <div style="flex-shrink:0;display:flex;align-items:stretch;padding:6px 4px 22px;background:{{ T_tabBarBg }};backdrop-filter:blur(9px) saturate(145%);-webkit-backdrop-filter:blur(9px) saturate(145%);border-top:1px solid rgba(196,155,110,0.3);box-shadow:0 -4px 16px rgba(58,32,20,0.12);">
+            <sc-for list="{{ tabs }}" as="tab" hint-placeholder-count="5">
+              <a href="#" style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 0;min-height:44px;justify-content:center;color:{{ tab.color }};">
+                <span style="width:22px;height:22px;display:block;" dangerouslySetInnerHTML="{{ tab.iconSvg }}"></span>
+                <span style="font-size:10px;font-weight:{{ tab.weight }};">{{ tab.label }}</span>
+              </a>
+            </sc-for>
+          </div>
+        </div>
+      </x-import>
+    </div>
+  </sc-if>
+
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1600,&quot;height&quot;:1000},&quot;defaultDevice&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;default&quot;:&quot;desktop&quot;,&quot;options&quot;:[&quot;desktop&quot;,&quot;mobile&quot;],&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Defaults&quot;}}">
+const ICONS = {
+  home: '<path d="M4 11l8-7 8 7v8.5a1.5 1.5 0 01-1.5 1.5h-13A1.5 1.5 0 016 19.5z"/><path d="M9.5 21v-6h5v6"/>',
+  mail: '<rect x="3" y="5.5" width="18" height="13" rx="2.2"/><path d="M4 6.5l8 6.2 8-6.2"/>',
+  users: '<circle cx="9" cy="7.8" r="3.6"/><path d="M2.7 20.2c.6-3.9 3.2-6.4 6.3-6.4s5.7 2.5 6.3 6.4"/><circle cx="17.5" cy="9" r="2.6"/><path d="M16 13.9c2.6.4 4.6 2.5 5.1 5.4" stroke-linecap="round"/>',
+  phone: '<path d="M7.3 3.3h2.4l1.2 4-1.7 1.6a11 11 0 005.9 5.9l1.6-1.7 4 1.2v2.4c0 1-.9 1.9-1.9 1.8C11.5 18 6 12.5 5.5 5.2c-.1-1 .8-1.9 1.8-1.9z"/>',
+  briefcase: '<rect x="2.7" y="7.6" width="18.6" height="12" rx="2.3"/><path d="M8.2 7.6V5.8a2 2 0 012-2h3.6a2 2 0 012 2v1.8"/><path d="M2.7 13h18.6"/>',
+  grid: '<rect x="3.2" y="3.2" width="7.6" height="7.6" rx="1.8"/><rect x="13.2" y="3.2" width="7.6" height="7.6" rx="1.8"/><rect x="3.2" y="13.2" width="7.6" height="7.6" rx="1.8"/><rect x="13.2" y="13.2" width="7.6" height="7.6" rx="1.8"/>',
+  calendar: '<rect x="3" y="4.8" width="18" height="15.5" rx="2.6"/><path d="M8 3v3.6M16 3v3.6M3 9.6h18"/>',
+  star: '<path d="M12 3.2l2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2-4.5-4.4 6.2-.9z" stroke-linejoin="round"/>',
+  award: '<circle cx="12" cy="8.6" r="5.3"/><path d="M8.3 13.1L6.6 21l5.4-2.9L17.4 21l-1.7-7.9"/>',
+  wallet: '<path d="M3 8a2.4 2.4 0 012.4-2.4h11.2A2.4 2.4 0 0119 8v9.2a2.4 2.4 0 01-2.4 2.4H5.4A2.4 2.4 0 013 17.2z"/><path d="M15.5 5.6L6 5.6"/><path d="M15.5 13.2h3.7v3.4h-3.7a1.7 1.7 0 010-3.4z"/>',
+  trend: '<path d="M3 16l5.4-5.4 4 4L21 6"/><path d="M15.5 6H21v5.5"/>',
+  chart: '<path d="M4 21V11M11 21V3M18 21v-8" stroke-linecap="round"/>',
+  file: '<path d="M6.5 3h7.3L18 7.2V21h-11.5z"/><path d="M13.8 3v4.2H18"/><path d="M8.7 12.5h6.6M8.7 16.3h6.6"/>',
+  bell: '<path d="M6 9.5a6 6 0 0112 0c0 4.2 1.5 5.6 2 6.3H4c.5-.7 2-2.1 2-6.3z"/><path d="M9.7 19a2.4 2.4 0 004.6 0"/>',
+  settings: '<circle cx="12" cy="12" r="3.1"/><path d="M19.4 12a7.4 7.4 0 01-.2 1.7l1.9 1.5-1.9 3.3-2.3-.8a7.4 7.4 0 01-1.5.9l-.4 2.4h-3.8l-.4-2.4a7.4 7.4 0 01-1.5-.9l-2.3.8-1.9-3.3 1.9-1.5A7.4 7.4 0 014.6 12c0-.6.1-1.1.2-1.7L2.9 8.8l1.9-3.3 2.3.8c.5-.4 1-.7 1.5-.9l.4-2.4h3.8l.4 2.4c.5.2 1 .5 1.5.9l2.3-.8 1.9 3.3-1.9 1.5c.1.6.2 1.1.2 1.7z"/>',
+  fees: '<circle cx="12" cy="12" r="9.2"/><path d="M12 6.8v10.4M9.3 15.4c0 1.1 1.1 1.9 2.7 1.9 1.8 0 2.9-.8 2.9-2s-1-1.7-2.9-2.1c-1.9-.4-2.7-1-2.7-2.1 0-1.2 1.1-2 2.7-2 1.6 0 2.7.8 2.7 1.9" stroke-linecap="round"/>',
+  attendance: '<rect x="3.3" y="4.8" width="17.4" height="15.4" rx="3.2"/><path d="M8 3.2v3.2M16 3.2v3.2M3.3 10h17.4"/><path d="M7.6 15l2.6 2.6 5.4-5.8" stroke-linecap="round"/>',
+  more: '<circle cx="12" cy="12" r="9.2"/><circle cx="7.7" cy="12" r="1.35" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.35" fill="currentColor" stroke="none"/><circle cx="16.3" cy="12" r="1.35" fill="currentColor" stroke="none"/>',
+  search: '<circle cx="10.8" cy="10.8" r="6.8"/><path d="M20.5 20.5l-4.8-4.8"/>',
+  filter: '<path d="M3.5 6h17M6.5 12h11M9.5 18h5" stroke-linecap="round"/>',
+  plus: '<path d="M12 4.5v15M4.5 12h15"/>',
+  sun: '<circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.4M12 19.1v2.4M4.4 4.4l1.7 1.7M17.9 17.9l1.7 1.7M2.5 12h2.4M19.1 12h2.4M4.4 19.6l1.7-1.7M17.9 6.1l1.7-1.7" stroke-linecap="round"/>',
+  moon: '<path d="M20 14.5A8.5 8.5 0 019.5 4 8.5 8.5 0 1020 14.5z"/>'
+};
+function svgIcon(name, color, size) {
+  return { __html: `<svg width="${size||18}" height="${size||18}" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${ICONS[name]}</svg>` };
+}
+
+class Component extends DCLogic {
+  state = { device: this.props.defaultDevice || 'desktop', filtersOpen: false, quickFilter: '', dark: true, profileId: null, activeTab: 'Overview' };
+
+  setDevice_desktop = () => this.setState({ device: 'desktop' });
+  setDevice_mobile = () => this.setState({ device: 'mobile' });
+  toggleTheme = () => this.setState(s => ({ dark: !s.dark }));
+  toggleFilters = () => this.setState(s => ({ filtersOpen: !s.filtersOpen }));
+  quickFilterClick(key) { this.setState({ quickFilter: key }); }
+  openProfile(id) { this.setState({ profileId: id, activeTab: 'Overview' }); }
+  closeProfile = () => this.setState({ profileId: null });
+  setTab(tab) { this.setState({ activeTab: tab }); }
+  stop(e) { e.stopPropagation(); }
+
+  money(n) { return '\u20B9' + Math.round(n).toLocaleString('en-IN'); }
+  initialsOf(name) { return name.split(' ').filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase(); }
+
+  students() {
+    return [
+      { id: 's1', name: 'Ananya Krishnan', admissionNo: 'ADM-2024-041', batchName: 'Hafeezpet Junior Batch', level: 'Foundation', status: 'Active', outstanding: 0, joinedOn: '2024-06-03', guardianName: 'Suresh Krishnan', guardianRelation: 'Father', guardianPhone: '+91 90000 10001', attendanceRate: 94, attendanceRecent: 96, billed: 18000, collected: 18000 },
+      { id: 's2', name: 'Rohan Mehta', admissionNo: 'ADM-2023-118', batchName: 'Kondapur Junior Batch', level: 'Foundation', status: 'Active', outstanding: 4500, joinedOn: '2023-08-14', guardianName: 'Anita Mehta', guardianRelation: 'Mother', guardianPhone: '+91 90000 10002', attendanceRate: 88, attendanceRecent: 82, billed: 27000, collected: 22500 },
+      { id: 's3', name: 'Divya Prakash', admissionNo: 'ADM-2022-076', batchName: '', level: 'Intermediate', status: 'Active', outstanding: 12800, joinedOn: '2022-02-21', guardianName: 'Prakash Iyer', guardianRelation: 'Father', guardianPhone: '+91 90000 10003', attendanceRate: 71, attendanceRecent: 60, billed: 36000, collected: 23200, medicalNotes: 'Mild asthma — carries an inhaler to class.' },
+      { id: 's4', name: 'Kiran Nair', admissionNo: 'ADM-2021-009', batchName: 'Hafeezpet Senior Batch', level: 'Advanced', status: 'On leave', outstanding: 0, joinedOn: '2021-01-11', guardianName: 'Lakshmi Nair', guardianRelation: 'Mother', guardianPhone: '+91 90000 10004', attendanceRate: 90, attendanceRecent: null, billed: 45000, collected: 45000 },
+      { id: 's5', name: 'Sanya Reddy', admissionNo: 'ADM-2024-090', batchName: 'Hafeezpet Junior Batch', level: 'Foundation', status: 'Active', outstanding: 0, joinedOn: '2024-07-02', guardianName: 'Vijay Reddy', guardianRelation: 'Father', guardianPhone: '+91 90000 10005', attendanceRate: 97, attendanceRecent: 100, billed: 9000, collected: 9000 },
+      { id: 's6', name: 'Arjun Verma', admissionNo: 'ADM-2020-005', batchName: 'Kondapur Senior Batch', level: 'Intermediate', status: 'Active', outstanding: 22000, joinedOn: '2020-05-19', guardianName: 'Renu Verma', guardianRelation: 'Mother', guardianPhone: '+91 90000 10006', attendanceRate: 65, attendanceRecent: 58, billed: 54000, collected: 32000 },
+      { id: 's7', name: 'Ishita Rao', admissionNo: '', batchName: '', level: 'Foundation', status: 'Active', outstanding: 0, joinedOn: '2025-01-08', guardianName: 'Kavya Rao', guardianRelation: 'Mother', guardianPhone: '+91 90000 10007', attendanceRate: null, attendanceRecent: null, billed: 0, collected: 0 },
+      { id: 's8', name: 'Varun Chowdary', admissionNo: 'ADM-2019-002', batchName: 'Kondapur Adult Batch', level: 'Advanced', status: 'Archived', outstanding: 0, joinedOn: '2019-03-25', guardianName: 'Chowdary Family', guardianRelation: 'Guardian', guardianPhone: '+91 90000 10008', attendanceRate: 79, attendanceRecent: null, billed: 60000, collected: 60000 },
+      { id: 's9', name: 'Meera Iyer', admissionNo: 'ADM-2024-102', batchName: 'Hafeezpet Junior Batch', level: 'Foundation', status: 'Active', outstanding: 0, joinedOn: '2024-09-09', guardianName: 'Ganesh Iyer', guardianRelation: 'Father', guardianPhone: '+91 90000 10009', attendanceRate: 91, attendanceRecent: 93, billed: 12000, collected: 12000 },
+      { id: 's10', name: 'Karthik Suresh', admissionNo: 'ADM-2023-055', batchName: 'Kondapur Junior Batch', level: 'Foundation', status: 'Active', outstanding: 3200, joinedOn: '2023-04-17', guardianName: 'Suresh Kumar', guardianRelation: 'Father', guardianPhone: '+91 90000 10010', attendanceRate: 84, attendanceRecent: 80, billed: 24000, collected: 20800 },
+      { id: 's11', name: 'Priya Balan', admissionNo: 'ADM-2022-019', batchName: 'Hafeezpet Senior Batch', level: 'Intermediate', status: 'Active', outstanding: 0, joinedOn: '2022-06-30', guardianName: 'Balan Menon', guardianRelation: 'Father', guardianPhone: '+91 90000 10011', attendanceRate: 96, attendanceRecent: 98, billed: 39000, collected: 39000 },
+      { id: 's12', name: 'Aditya Kapoor', admissionNo: 'ADM-2021-088', batchName: 'Kondapur Senior Batch', level: 'Advanced', status: 'On leave', outstanding: 8000, joinedOn: '2021-11-02', guardianName: 'Neha Kapoor', guardianRelation: 'Mother', guardianPhone: '+91 90000 10012', attendanceRate: 73, attendanceRecent: null, billed: 51000, collected: 43000 },
+      { id: 's13', name: 'Nisha Menon', admissionNo: 'ADM-2024-133', batchName: 'Hafeezpet Junior Batch', level: 'Foundation', status: 'Active', outstanding: 0, joinedOn: '2024-10-21', guardianName: 'Ravi Menon', guardianRelation: 'Father', guardianPhone: '+91 90000 10013', attendanceRate: 92, attendanceRecent: 95, billed: 6000, collected: 6000 },
+      { id: 's14', name: 'Rahul Bhatt', admissionNo: 'ADM-2020-044', batchName: 'Kondapur Adult Batch', level: 'Advanced', status: 'Active', outstanding: 0, joinedOn: '2020-09-13', guardianName: 'Meenal Bhatt', guardianRelation: 'Mother', guardianPhone: '+91 90000 10014', attendanceRate: 88, attendanceRecent: 90, billed: 57000, collected: 57000 },
+      { id: 's15', name: 'Sneha Pillai', admissionNo: 'ADM-2023-071', batchName: 'Hafeezpet Senior Batch', level: 'Intermediate', status: 'Archived', outstanding: 0, joinedOn: '2023-01-05', guardianName: 'Pillai Family', guardianRelation: 'Guardian', guardianPhone: '+91 90000 10015', attendanceRate: 68, attendanceRecent: null, billed: 33000, collected: 33000 }
+    ];
+  }
+
+  renderVals() {
+    const all = this.students();
+    const { device, filtersOpen, quickFilter } = this.state;
+    const isDesktop = device === 'desktop', isMobile = device === 'mobile';
+
+    let filtered = all.filter(s => {
+      if (quickFilter === 'unplaced' && s.batchName) return false;
+      if (quickFilter === 'overdue' && s.outstanding <= 0) return false;
+      return true;
+    });
+
+    const isDarkBadge = true;
+    const boost = this.state.dark ? 1 : 2.8;
+    const bright = (rgba) => rgba.replace(/,([\d.]+)\)$/, (m, a) => `,${Math.min(1, parseFloat(a) * boost).toFixed(2)})`);
+    const STATUS_BADGE = {
+      Active: [bright('rgba(94,166,101,0.16)'), '#8FD99A', bright('rgba(143,217,154,0.35)')],
+      'On leave': [bright('rgba(224,166,74,0.16)'), '#F0C177', bright('rgba(240,193,119,0.35)')],
+      Archived: [bright('rgba(255,248,239,0.08)'), 'rgba(255,248,239,0.6)', bright('rgba(255,248,239,0.2)')]
+    };
+
+    const rows = filtered.map((s, i) => {
+      const [aBg, aColor] = ['#F3E4D4', '#8C4A28'];
+      const [sBg, sText, sBorder] = STATUS_BADGE[s.status] || STATUS_BADGE.Active;
+      const feeBg = bright(s.outstanding === 0 ? 'rgba(94,166,101,0.16)' : (s.outstanding > 15000 ? 'rgba(224,94,74,0.18)' : 'rgba(224,166,74,0.16)'));
+      const feeText = s.outstanding === 0 ? '#8FD99A' : (s.outstanding > 15000 ? '#F0917C' : '#F0C177');
+      const feeBorder = bright(s.outstanding === 0 ? 'rgba(143,217,154,0.35)' : (s.outstanding > 15000 ? 'rgba(240,145,124,0.35)' : 'rgba(240,193,119,0.35)'));
+      return {
+        onClick: () => this.openProfile(s.id),
+        index: i + 1, id: s.id, name: s.name, admissionNo: s.admissionNo || 'no admission number',
+        batchLabel: s.batchName || 'Not placed', level: s.level,
+        metaLine: `${s.level} \u00b7 ${s.batchName || 'Not placed'}`,
+        initials: this.initialsOf(s.name), avatarBg: aBg, avatarColor: aColor,
+        feeLabel: s.outstanding === 0 ? 'Clear' : this.money(s.outstanding), feeBg, feeText, feeBorder,
+        status: s.status, statusBg: sBg, statusText: sText, statusBorder: sBorder,
+        stripe: this.state.dark
+          ? (i % 2 === 0 ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.08)')
+          : (i % 2 === 0 ? 'rgba(255,255,255,0.5)' : 'rgba(224,204,175,0.35)')
+      };
+    });
+
+    const owing = all.filter(s => s.outstanding > 0).length;
+    const rollSubtitle = `${all.length} students \u00b7 ${owing ? owing + ' with fees outstanding' : 'fees all clear'}`;
+
+    const TABS = ['Overview', 'Fees', 'Attendance', 'People', 'Records', 'History'];
+    const { profileId, activeTab } = this.state;
+    const pStudent = profileId ? all.find(s => s.id === profileId) : null;
+    let profile = null;
+    if (pStudent) {
+      const s = pStudent;
+      const tabsVals = TABS.map(t => ({
+        label: t, isActive: t === activeTab, onClick: () => this.setTab(t),
+        bg: t === activeTab ? '#B45B34' : 'transparent', color: t === activeTab ? '#fff' : (isDarkBadge ? 'rgba(255,248,239,0.75)' : '#6B5236')
+      }));
+      profile = {
+        student: s, tabs: tabsVals,
+        isOverview: activeTab === 'Overview', isFees: activeTab === 'Fees', isAttendance: activeTab === 'Attendance',
+        isPeople: activeTab === 'People', isRecords: activeTab === 'Records', isHistory: activeTab === 'History',
+        subtitle: `${s.level} \u00b7 ${s.batchName || 'Not placed'} \u00b7 ${s.admissionNo || 'no admission number'}`,
+        notPlaced: !s.batchName,
+        attendanceAll: s.attendanceRate === null ? '\u2014' : `${s.attendanceRate}%`,
+        attendanceRecent: s.attendanceRecent === null || s.attendanceRecent === undefined ? '\u2014' : `${s.attendanceRecent}%`,
+        feesOutstanding: this.money(s.outstanding), tenureMonths: Math.max(0, Math.floor((Date.now() - new Date(s.joinedOn)) / (1000 * 60 * 60 * 24 * 30))),
+        billed: this.money(s.billed || 0), collected: this.money(s.collected || 0),
+        joinedLong: s.joinedOn ? new Date(s.joinedOn).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' }) : '\u2014',
+        medicalNotes: s.medicalNotes || null,
+        guardianName: s.guardianName, guardianRelation: s.guardianRelation, guardianPhone: s.guardianPhone
+      };
+    }
+
+    const quickChips = [
+      { key: '', label: 'Everyone' }, { key: 'unplaced', label: 'Not in a batch' },
+      { key: 'overdue', label: 'Fees overdue' }
+    ].map(c => ({
+      ...c, onClick: () => this.quickFilterClick(c.key),
+      bg: quickFilter === c.key ? '#B45B34' : 'rgba(255,255,255,0.8)', color: quickFilter === c.key ? '#fff' : '#3A2013',
+      border: quickFilter === c.key ? 'none' : '1px solid rgba(196,155,110,0.35)'
+    }));
+
+    const navGroups = [
+      { label: 'Overview', items: [{ label: 'Dashboard', href: '#', icon: 'home' }] },
+      { label: 'People', items: [
+        { label: 'Admissions', href: '#', icon: 'mail' }, { label: 'Students', href: '#', active: true, icon: 'users' },
+        { label: 'Parents', href: '#', icon: 'phone' }, { label: 'Staff', href: '#', icon: 'briefcase' }
+      ]},
+      { label: 'Teaching', items: [
+        { label: 'Batches', href: '#', icon: 'grid' }, { label: 'Timetable', href: '#', icon: 'calendar' },
+        { label: 'Programmes', href: '#', icon: 'star' }, { label: 'Certificates', href: '#', icon: 'award' }
+      ]},
+      { label: 'Money', items: [{ label: 'Fee collection', href: '#', icon: 'wallet' }, { label: 'Finance', href: '#', icon: 'trend' }] },
+      { label: 'Insight', items: [
+        { label: 'Analytics', href: '#', icon: 'chart' }, { label: 'Reports', href: '#', icon: 'file' },
+        { label: 'Notifications', href: '#', icon: 'bell' }, { label: 'Settings', href: '#', icon: 'settings' }
+      ]}
+    ];
+    const navInactiveColor = this.state.dark ? 'rgba(255,248,239,0.85)' : 'rgba(255,255,255,0.88)';
+    navGroups.forEach(g => g.items.forEach(it => {
+      const color = it.active ? '#FFF8EF' : navInactiveColor;
+      it.iconSvg = svgIcon(it.icon, color, 18);
+      it.bg = it.active ? 'rgba(180,91,52,0.55)' : 'transparent';
+      it.color = color;
+    }));
+
+    const TAB_DEF = [
+      { key: 'home', icon: 'home', label: 'Home', active: false }, { key: 'students', icon: 'users', label: 'Students', active: true },
+      { key: 'fees', icon: 'fees', label: 'Fees', active: false }, { key: 'attendance', icon: 'attendance', label: 'Attendance', active: false },
+      { key: 'more', icon: 'more', label: 'More', active: false }
+    ];
+    const tabs = TAB_DEF.map(t => {
+      const color = t.active ? '#E2622B' : '#6B5236';
+      return { label: t.label, color, weight: t.active ? '700' : '500', iconSvg: svgIcon(t.icon, color, 22) };
+    });
+
+    const segBtn = (active) => `padding:7px 14px;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;background:${active ? '#B45B34' : 'transparent'};color:${active ? '#fff' : 'rgba(255,248,239,0.8)'};`;
+
+    const dark = this.state.dark;
+    const T = dark ? {
+      scrim: 'rgba(30,15,8,0.22)', titleColor: '#FFF8EF', titleShadow: '0 1px 4px rgba(0,0,0,0.3)', subColor: 'rgba(255,248,239,0.78)',
+      sidebarBg: 'linear-gradient(180deg,rgba(20,11,6,0.88),rgba(35,19,10,0.88))', sidebarBorder: 'rgba(255,248,239,0.1)', sidebarShadow: '4px 0 24px rgba(0,0,0,0.35)',
+      navLabelColor: 'rgba(255,248,239,0.36)', navActiveColor: '#FFF8EF',
+      cardBg: 'rgba(58,32,20,0.58)', cardBorder: 'rgba(255,248,239,0.16)', cardShadow: '0 10px 30px rgba(58,32,20,0.3)',
+      theadBg: 'rgba(0,0,0,0.16)', thColor: 'rgba(255,255,255,0.7)', rowBorder: 'rgba(255,248,239,0.1)',
+      nameColor: '#FFFFFF', batchColor: '#FFFFFF', rowHover: 'rgba(255,248,239,0.14)',
+      mobileHeaderBg: 'rgba(255,248,239,0.5)', mobileTitleColor: '#3A2013', mobileSubColor: '#5B4632',
+      tabBarBg: 'rgba(250,240,225,0.86)'
+    } : {
+      scrim: 'rgba(255,248,239,0.22)', titleColor: '#FFFFFF', titleShadow: '0 1px 4px rgba(0,0,0,0.25)', subColor: 'rgba(255,255,255,0.75)',
+      sidebarBg: 'rgba(255,255,255,0.14)', sidebarBorder: 'rgba(255,255,255,0.25)', sidebarShadow: '4px 0 24px rgba(0,0,0,0.2)',
+      navLabelColor: 'rgba(255,255,255,0.6)', navActiveColor: '#FFFFFF',
+      cardBg: 'rgba(255,255,255,0.14)', cardBorder: 'rgba(255,255,255,0.25)', cardShadow: '0 10px 30px rgba(0,0,0,0.2)',
+      theadBg: 'rgba(255,255,255,0.1)', thColor: 'rgba(255,255,255,0.75)', rowBorder: 'rgba(255,255,255,0.16)',
+      nameColor: '#FFFFFF', batchColor: '#FFFFFF', rowHover: 'rgba(255,255,255,0.12)',
+      mobileHeaderBg: 'rgba(255,248,239,0.8)', mobileTitleColor: '#3A2013', mobileSubColor: '#5B4632',
+      tabBarBg: 'rgba(255,251,244,0.9)'
+    };
+    const Tp = {};
+    Object.keys(T).forEach(k => { Tp['T_' + k] = T[k]; });
+
+    return {
+      ...Tp,
+      rowHoverClass: dark ? 'nsrow-dark' : 'nsrow-light',
+      toggleTheme: this.toggleTheme,
+      themeLabel: dark ? 'Light' : 'Dark',
+      icon_theme: svgIcon(dark ? 'sun' : 'moon', '#FFF8EF', 15),
+      isDesktop, isMobile,
+      setDevice_desktop: this.setDevice_desktop, setDevice_mobile: this.setDevice_mobile,
+      deviceBtnStyle_desktop: segBtn(isDesktop), deviceBtnStyle_mobile: segBtn(isMobile),
+      sidebarWidth: '256px', navGroups,
+      rollSubtitle, rows,
+      filtersOpen, toggleFilters: this.toggleFilters,
+      filterBtnBg: quickFilter ? '#B45B34' : (dark ? 'rgba(255,248,239,0.4)' : 'rgba(255,255,255,0.85)'),
+      filterBtnColor: quickFilter ? '#fff' : (dark ? '#FFF8EF' : '#3A2013'),
+      filterBtnBorder: quickFilter ? '1px solid transparent' : (dark ? '1px solid rgba(255,248,239,0.4)' : '1px solid rgba(196,155,110,0.4)'),
+      quickChips, tabs,
+      icon_search: svgIcon('search', '#6B5642', 15),
+      icon_filter: svgIcon('filter', 'currentColor', 14),
+      icon_plus: svgIcon('plus', '#fff', 14),
+      icon_plus_lg: svgIcon('plus', '#fff', 22),
+      profile, closeProfile: this.closeProfile
+    };
+  }
+}
+
+</script>
+</body>
+</html>

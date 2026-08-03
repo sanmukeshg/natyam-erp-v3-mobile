@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+
+<helmet>
+<style>
+  body{margin:0;font-family:"Segoe UI",system-ui,-apple-system,"Helvetica Neue","Noto Sans",sans-serif;}
+  a{color:#9A5A32;text-decoration:none;}
+  a:hover{color:#7A431F;text-decoration:underline;}
+  ::-webkit-scrollbar{width:10px;height:10px;}
+  ::-webkit-scrollbar-track{background:rgba(58,32,20,0.15);}
+  ::-webkit-scrollbar-thumb{background:rgba(180,91,52,0.6);border-radius:99px;border:2px solid transparent;background-clip:padding-box;}
+  .mainscroll::-webkit-scrollbar-track{background:rgba(30,15,8,0.35);}
+  .mainscroll::-webkit-scrollbar-thumb{background:rgba(255,238,220,0.55);}
+  button,a{transition:background 180ms ease,box-shadow 180ms ease,transform 180ms ease,color 180ms ease;}
+  .ndcard{transition:box-shadow 220ms ease,transform 220ms ease;}
+  .ndcard:hover{box-shadow:0 16px 34px rgba(58,32,20,0.22),0 0 0 1px rgba(180,91,52,0.25),0 0 24px rgba(180,91,52,0.28) !important;transform:translateY(-3px);}
+</style>
+<script component-from-global-scope="ChromeWindow" from="./browser-window.jsx"></script>
+<script component-from-global-scope="IOSDevice" from="./ios-frame.jsx"></script>
+</helmet>
+
+<div data-screen-label="Dashboard" style="min-height:100vh;padding:32px;box-sizing:border-box;background:url('assets/desktop-bg-ref.png') center/cover no-repeat;display:flex;flex-direction:column;align-items:center;gap:24px;">
+
+  <div style="width:100%;max-width:1500px;display:flex;align-items:center;justify-content:space-between;gap:24px;flex-wrap:wrap;">
+    <div>
+      <div style="font-size:24px;font-weight:700;color:{{ T_titleColor }};letter-spacing:-0.01em;text-shadow:{{ T_titleShadow }};">Natyam ERP &mdash; Dashboard</div>
+      <div style="font-size:13px;color:{{ T_subColor }};margin-top:3px;">Desktop &amp; Mobile experiences share the same data</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+      <div style="display:flex;background:rgba(255,248,239,0.16);backdrop-filter:blur(8px) saturate(136%);-webkit-backdrop-filter:blur(8px) saturate(136%);border:1px solid rgba(255,248,239,0.3);border-radius:12px;padding:4px;gap:4px;">
+        <button onclick="{{ setDevice_desktop }}" style="{{ deviceBtnStyle_desktop }}">Desktop</button>
+        <button onclick="{{ setDevice_mobile }}" style="{{ deviceBtnStyle_mobile }}">Mobile</button>
+      </div>
+      <div style="display:flex;background:rgba(255,248,239,0.16);backdrop-filter:blur(8px) saturate(136%);-webkit-backdrop-filter:blur(8px) saturate(136%);border:1px solid rgba(255,248,239,0.3);border-radius:12px;padding:4px;gap:4px;">
+        <button onclick="{{ setRole_owner }}" style="{{ roleBtnStyle_owner }}">Owner</button>
+        <button onclick="{{ setRole_teacher }}" style="{{ roleBtnStyle_teacher }}">Teacher</button>
+      </div>
+      <button onclick="{{ toggleTheme }}" style="display:flex;align-items:center;gap:7px;height:36px;padding:0 13px;font-size:12px;font-weight:600;background:rgba(255,248,239,0.16);backdrop-filter:blur(8px) saturate(136%);-webkit-backdrop-filter:blur(8px) saturate(136%);border:1px solid rgba(255,248,239,0.3);border-radius:10px;color:#FFF8EF;cursor:pointer;">
+        <span style="width:15px;height:15px;display:block;" dangerouslySetInnerHTML="{{ icon_theme }}"></span>{{ themeLabel }}
+      </button>
+    </div>
+  </div>
+
+  <sc-if value="{{ isDesktop }}" hint-placeholder-val="{{ true }}">
+    <div style="width:100%;max-width:1500px;">
+      <x-import component-from-global-scope="ChromeWindow" from="./browser-window.jsx" url="app.natyamschool.in/dashboard" width="1440" height="900" hint-size="1440,900">
+
+        <div style="display:grid;grid-template-columns:{{ sidebarWidth }} minmax(0,1fr);height:100%;background:url('assets/desktop-bg-ref.png') center/cover no-repeat;overflow:hidden;">
+
+          <aside style="background:{{ T_sidebarBg }};border-right:1px solid {{ T_sidebarBorder }};box-shadow:{{ T_sidebarShadow }};display:flex;flex-direction:column;height:100%;overflow:hidden;position:relative;z-index:1;">
+            <div style="display:flex;align-items:center;gap:12px;height:56px;padding:0 16px;border-bottom:1px solid {{ T_sidebarBorder }};flex-shrink:0;">
+              <img src="assets/natyam-logo.png" alt="NATYAM" style="width:32px;height:32px;flex-shrink:0;border-radius:8px;object-fit:cover;">
+              <div style="min-width:0;overflow:hidden;">
+                <div style="font-family:Georgia,serif;font-weight:700;font-size:14px;letter-spacing:0.02em;color:{{ T_navActiveColor }};white-space:nowrap;">NATYAM</div>
+                <div style="font-size:11px;color:{{ T_navLabelColor }};white-space:nowrap;">School of Kuchipudi</div>
+              </div>
+            </div>
+            <nav style="flex:1;padding:8px 12px 16px;overflow-y:auto;">
+              <sc-for list="{{ navGroups }}" as="group" hint-placeholder-count="5">
+                <div style="margin-top:16px;">
+                  <div style="padding:0 12px 8px;font-size:11px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:{{ T_navLabelColor }};">{{ group.label }}</div>
+                  <sc-for list="{{ group.items }}" as="item" hint-placeholder-count="3">
+                    <a href="{{ item.href }}" style="position:relative;display:flex;align-items:center;gap:12px;height:34px;padding:0 12px;font-size:13px;font-weight:500;color:{{ item.color }};background:{{ item.bg }};border-radius:9px;margin-bottom:1px;">
+                      <span style="width:18px;height:18px;flex-shrink:0;display:block;" dangerouslySetInnerHTML="{{ item.iconSvg }}"></span>
+                      <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ item.label }}</span>
+                    </a>
+                  </sc-for>
+                </div>
+              </sc-for>
+            </nav>
+          </aside>
+
+          <div style="display:flex;flex-direction:column;min-width:0;height:100%;overflow:hidden;">
+            <header style="flex-shrink:0;display:flex;align-items:center;gap:12px;height:56px;padding:0 24px;background:rgba(255,248,239,0.45);border-bottom:1px solid rgba(255,248,239,0.35);">
+              <div style="flex:1 1 auto;max-width:460px;">
+                <button style="display:flex;align-items:center;gap:8px;width:100%;height:34px;padding:0 8px 0 12px;font-size:13px;color:#6B5642;background:rgba(255,255,255,0.55);border:1px solid rgba(255,255,255,0.6);border-radius:9px;">
+                  <span style="width:15px;height:15px;display:block;" dangerouslySetInnerHTML="{{ icon_search }}"></span><span>Search students, receipts, batches&hellip;</span>
+                </button>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;margin-left:auto;">
+                <span style="width:26px;height:26px;display:grid;place-items:center;font-size:11px;font-weight:700;color:#FFF8EF;background:#8C4A28;border-radius:99px;">{{ userInitials }}</span>
+                <span style="text-align:left;">
+                  <span style="display:block;font-size:13px;font-weight:600;color:#3A2013;">{{ userName }}</span>
+                  <span style="display:block;font-size:11px;font-weight:600;color:#3A2013;margin-top:1px;">{{ roleLabel }}</span>
+                </span>
+              </div>
+            </header>
+
+            <main class="mainscroll" style="flex:1;overflow-y:scroll;scrollbar-gutter:stable;background:url('assets/desktop-bg-ref.png') center/cover no-repeat;">
+              <div style="padding:24px 24px 16px;">
+                <h1 style="font-size:24px;font-weight:700;letter-spacing:-0.011em;color:{{ T_titleColor }};margin:0;text-shadow:{{ T_titleShadow }};">{{ greeting }}</h1>
+                <p style="font-size:13px;color:{{ T_subColor }};margin:5px 0 0;text-shadow:{{ T_titleShadow }};">{{ todayLong }}</p>
+              </div>
+
+              <div style="padding:0 24px 40px;max-width:1400px;display:flex;flex-direction:column;gap:16px;">
+
+                <div style="display:grid;grid-template-columns:repeat({{ kpiCols }},minmax(180px,1fr));gap:14px;overflow-x:auto;overflow-y:visible;padding-top:6px;margin-top:-6px;">
+                  <sc-for list="{{ kpis }}" as="k" hint-placeholder-count="5">
+                    <div class="ndcard" style="display:flex;background:{{ k.toneBg }};backdrop-filter:blur(10px) saturate(128%);-webkit-backdrop-filter:blur(10px) saturate(128%);border:1px solid {{ k.toneBorder }};border-left:3px solid {{ k.toneColor }};border-radius:14px;box-shadow:{{ T_cardShadow }};box-sizing:border-box;min-height:136px;padding:18px;">
+                      <div style="flex:1;min-width:0;">
+                        <div style="font-size:11px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:{{ T_navLabelColor }};">{{ k.label }}</div>
+                        <div style="font-size:24px;font-weight:600;color:{{ T_nameColor }};margin-top:8px;line-height:1.2;">{{ k.value }}{{ k.unit }}</div>
+                        <div style="font-size:12px;color:{{ k.deltaColor }};margin-top:6px;font-weight:600;">{{ k.deltaText }}</div>
+                      </div>
+                    </div>
+                  </sc-for>
+                </div>
+
+                <sc-if value="{{ isTeacherMode }}" hint-placeholder-val="{{ false }}">
+                  <section class="ndcard" style="background:{{ T_cardBg }};backdrop-filter:blur(10px) saturate(128%);-webkit-backdrop-filter:blur(10px) saturate(128%);border:1px solid {{ T_cardBorder }};border-radius:14px;box-shadow:{{ T_cardShadow }};overflow:hidden;">
+                    <div style="padding:16px 20px;border-bottom:1px solid {{ T_rowBorder }};">
+                      <h2 style="font-size:16px;font-weight:700;margin:0;color:{{ T_nameColor }};">Your classes today</h2>
+                    </div>
+                    <div style="padding:6px 14px;">
+                      <sc-for list="{{ teacherClasses }}" as="cls" hint-placeholder-count="3">
+                        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 6px;border-bottom:1px solid {{ T_rowBorder }};">
+                          <div>
+                            <div style="font-size:14px;font-weight:600;color:{{ T_nameColor }};">{{ cls.name }}</div>
+                            <div style="font-size:12px;color:{{ T_navLabelColor }};margin-top:2px;">{{ cls.time }}</div>
+                          </div>
+                          <a href="#" style="display:inline-flex;align-items:center;height:30px;padding:0 14px;font-size:12px;font-weight:600;border-radius:9px;background:{{ cls.actionBg }};color:{{ cls.actionColor }};">{{ cls.action }}</a>
+                        </div>
+                      </sc-for>
+                    </div>
+                  </section>
+                </sc-if>
+
+                <sc-if value="{{ !isTeacherMode }}" hint-placeholder-val="{{ true }}">
+                  <div style="display:grid;grid-template-columns:2fr 1fr;gap:16px;">
+                    <section class="ndcard" style="background:{{ T_cardBg }};backdrop-filter:blur(10px) saturate(128%);-webkit-backdrop-filter:blur(10px) saturate(128%);border:1px solid {{ T_cardBorder }};border-radius:14px;box-shadow:{{ T_cardShadow }};overflow:hidden;">
+                      <div style="padding:16px 20px;border-bottom:1px solid {{ T_rowBorder }};">
+                        <h2 style="font-size:16px;font-weight:700;margin:0;color:{{ T_nameColor }};">Needs attention</h2>
+                      </div>
+                      <div style="padding:6px 20px;">
+                        <sc-for list="{{ attention }}" as="item" hint-placeholder-count="4">
+                          <div style="display:flex;align-items:flex-start;gap:12px;padding:13px 0;border-bottom:1px solid {{ T_rowBorder }};">
+                            <span style="width:9px;height:9px;margin-top:6px;border-radius:99px;background:{{ item.dotColor }};flex-shrink:0;"></span>
+                            <div style="flex:1;min-width:0;">
+                              <div style="font-size:13px;font-weight:600;color:{{ T_nameColor }};">{{ item.title }}</div>
+                              <div style="font-size:12px;color:{{ T_navLabelColor }};margin-top:2px;">{{ item.detail }}</div>
+                            </div>
+                            <a href="#" style="display:inline-flex;align-items:center;height:28px;padding:0 12px;font-size:12px;font-weight:600;border-radius:8px;background:rgba(255,255,255,0.12);color:{{ T_nameColor }};border:1px solid {{ T_cardBorder }};flex-shrink:0;">{{ item.action }}</a>
+                          </div>
+                        </sc-for>
+                      </div>
+                    </section>
+
+                    <section class="ndcard" style="background:{{ T_cardBg }};backdrop-filter:blur(10px) saturate(128%);-webkit-backdrop-filter:blur(10px) saturate(128%);border:1px solid {{ T_cardBorder }};border-radius:14px;box-shadow:{{ T_cardShadow }};overflow:hidden;">
+                      <div style="padding:16px 20px;border-bottom:1px solid {{ T_rowBorder }};">
+                        <h2 style="font-size:16px;font-weight:700;margin:0;color:{{ T_nameColor }};">Today</h2>
+                        <p style="font-size:12px;color:{{ T_navLabelColor }};margin:2px 0 0;">{{ registersDone }} of {{ registersTotal }} registers marked</p>
+                      </div>
+                      <div style="padding:8px;max-height:340px;overflow-y:auto;">
+                        <sc-for list="{{ todayClasses }}" as="cls" hint-placeholder-count="4">
+                          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px;">
+                            <div style="min-width:0;">
+                              <div style="font-size:13px;font-weight:600;color:{{ T_nameColor }};">{{ cls.name }}</div>
+                              <div style="font-size:11px;color:{{ T_navLabelColor }};margin-top:2px;">{{ cls.meta }}</div>
+                            </div>
+                            <span style="flex-shrink:0;padding:2px 8px;font-size:11px;font-weight:700;border-radius:6px;background:{{ cls.badgeBg }};color:{{ cls.badgeText }};">{{ cls.badgeLabel }}</span>
+                          </div>
+                        </sc-for>
+                      </div>
+                    </section>
+                  </div>
+
+                  <div style="display:grid;grid-template-columns:2fr 1fr;gap:16px;">
+                    <section class="ndcard" style="background:{{ T_cardBg }};backdrop-filter:blur(10px) saturate(128%);-webkit-backdrop-filter:blur(10px) saturate(128%);border:1px solid {{ T_cardBorder }};border-radius:14px;box-shadow:{{ T_cardShadow }};overflow:hidden;">
+                      <div style="padding:16px 20px;border-bottom:1px solid {{ T_rowBorder }};"><h2 style="font-size:16px;font-weight:700;margin:0;color:{{ T_nameColor }};">Money</h2></div>
+                      <div style="padding:20px;">
+                        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;">
+                          <div><div style="font-size:12px;color:{{ T_navLabelColor }};">Collected this month</div><div style="font-size:18px;font-weight:600;color:{{ T_nameColor }};margin-top:4px;">{{ moneyCollected }}</div></div>
+                          <div><div style="font-size:12px;color:{{ T_navLabelColor }};">Outstanding</div><div style="font-size:18px;font-weight:600;color:{{ T_nameColor }};margin-top:4px;">{{ moneyOutstanding }}</div></div>
+                          <div><div style="font-size:12px;color:{{ T_navLabelColor }};">Net position</div><div style="font-size:18px;font-weight:600;color:{{ T_nameColor }};margin-top:4px;">{{ moneyNet }}</div></div>
+                        </div>
+                        <div style="height:1px;background:{{ T_rowBorder }};margin:18px 0;"></div>
+                        <div style="display:flex;align-items:flex-end;gap:12px;height:130px;">
+                          <sc-for list="{{ incomeBars }}" as="bar" hint-placeholder-count="6">
+                            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;">
+                              <div style="font-size:10px;color:{{ T_navLabelColor }};">{{ bar.shortValue }}</div>
+                              <div style="width:100%;max-width:34px;height:{{ bar.heightPx }}px;background:#B45B34;border-radius:4px 4px 0 0;"></div>
+                              <div style="font-size:11px;color:{{ T_navLabelColor }};">{{ bar.label }}</div>
+                            </div>
+                          </sc-for>
+                        </div>
+                      </div>
+                    </section>
+
+                    <section class="ndcard" style="background:{{ T_cardBg }};backdrop-filter:blur(10px) saturate(128%);-webkit-backdrop-filter:blur(10px) saturate(128%);border:1px solid {{ T_cardBorder }};border-radius:14px;box-shadow:{{ T_cardShadow }};overflow:hidden;">
+                      <div style="padding:16px 20px;border-bottom:1px solid {{ T_rowBorder }};"><h2 style="font-size:16px;font-weight:700;margin:0;color:{{ T_nameColor }};">The roll</h2><p style="font-size:12px;color:{{ T_navLabelColor }};margin:2px 0 0;">{{ rollTotal }} active students</p></div>
+                      <div style="padding:20px;max-height:340px;overflow-y:auto;">
+                        <sc-for list="{{ levelBars }}" as="lv" hint-placeholder-count="3">
+                          <div style="margin-bottom:10px;">
+                            <div style="display:flex;justify-content:space-between;font-size:12px;color:{{ T_navLabelColor }};margin-bottom:4px;"><span>{{ lv.label }}</span><span>{{ lv.value }}</span></div>
+                            <div style="height:8px;background:rgba(0,0,0,0.12);border-radius:99px;overflow:hidden;"><div style="height:100%;width:{{ lv.widthPct }}%;background:#B45B34;"></div></div>
+                          </div>
+                        </sc-for>
+                      </div>
+                    </section>
+                  </div>
+
+                  <section class="ndcard" style="background:{{ T_cardBg }};backdrop-filter:blur(10px) saturate(128%);-webkit-backdrop-filter:blur(10px) saturate(128%);border:1px solid {{ T_cardBorder }};border-radius:14px;box-shadow:{{ T_cardShadow }};overflow:hidden;">
+                    <div style="padding:16px 20px;border-bottom:1px solid {{ T_rowBorder }};"><h2 style="font-size:16px;font-weight:700;margin:0;color:{{ T_nameColor }};">Recent activity</h2></div>
+                    <div style="padding:6px 20px;">
+                      <sc-for list="{{ activity }}" as="e" hint-placeholder-count="4">
+                        <div style="display:flex;gap:12px;padding:11px 0;border-bottom:1px solid {{ T_rowBorder }};">
+                          <span style="width:8px;height:8px;margin-top:5px;border-radius:99px;background:{{ T_cardBorder }};flex-shrink:0;"></span>
+                          <div>
+                            <div style="font-size:13px;color:{{ T_nameColor }};">{{ e.summary }}</div>
+                            <div style="font-size:11px;color:{{ T_navLabelColor }};margin-top:2px;">{{ e.meta }}</div>
+                          </div>
+                        </div>
+                      </sc-for>
+                    </div>
+                  </section>
+                </sc-if>
+              </div>
+            </main>
+          </div>
+        </div>
+      </x-import>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ isMobile }}" hint-placeholder-val="{{ false }}">
+    <div style="width:100%;max-width:420px;">
+      <x-import component-from-global-scope="IOSDevice" from="./ios-frame.jsx" hint-size="402,874">
+        <div style="display:flex;flex-direction:column;height:100%;background:url('assets/mobile-bg-ref.png') center/cover no-repeat;position:relative;overflow:hidden;">
+
+          <div style="flex-shrink:0;padding:62px 16px 12px;background:{{ T_mobileHeaderBg }};border-bottom:1px solid rgba(255,248,239,0.35);display:flex;align-items:center;gap:10px;">
+            <img src="assets/natyam-logo.png" alt="NATYAM" style="width:36px;height:36px;flex-shrink:0;border-radius:10px;object-fit:cover;box-shadow:0 1px 2px rgba(0,0,0,0.15);">
+            <div style="min-width:0;flex:1;">
+              <div style="font-size:19px;font-weight:700;color:{{ T_mobileTitleColor }};">{{ greeting }}</div>
+              <div style="font-size:11.5px;color:{{ T_mobileSubColor }};font-weight:600;margin-top:1px;">{{ todayLong }}</div>
+            </div>
+            <span style="width:36px;height:36px;flex-shrink:0;display:grid;place-items:center;font-size:12px;font-weight:700;color:#fff;background:#8C4A28;border-radius:99px;">{{ userInitials }}</span>
+          </div>
+
+          <div style="flex:1;overflow-y:auto;padding:14px 16px 16px;">
+            <sc-if value="{{ isTeacherMode }}" hint-placeholder-val="{{ true }}">
+              <div style="display:flex;gap:10px;margin-bottom:16px;">
+                <div class="ndcard" style="flex:1;background:{{ T_cardBg }};backdrop-filter:blur(10px) saturate(128%);-webkit-backdrop-filter:blur(10px) saturate(128%);border:1px solid {{ T_cardBorder }};border-radius:14px;padding:14px;">
+                  <div style="font-size:22px;font-weight:600;color:{{ T_nameColor }};">{{ classesToday }}</div>
+                  <div style="font-size:11px;color:{{ T_navLabelColor }};margin-top:2px;">Classes today</div>
+                </div>
+                <div class="ndcard" style="flex:1;background:{{ T_cardBg }};backdrop-filter:blur(10px) saturate(128%);-webkit-backdrop-filter:blur(10px) saturate(128%);border:1px solid {{ T_cardBorder }};border-radius:14px;padding:14px;">
+                  <div style="font-size:22px;font-weight:600;color:{{ T_nameColor }};">{{ registersPending }}</div>
+                  <div style="font-size:11px;color:{{ T_navLabelColor }};margin-top:2px;">Register{{ registersPendingSuffix }} pending</div>
+                </div>
+              </div>
+
+              <div style="font-size:12px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:{{ T_titleColor }};text-shadow:{{ T_titleShadow }};margin-bottom:8px;">Your classes today</div>
+              <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:20px;">
+                <sc-for list="{{ teacherClasses }}" as="cls" hint-placeholder-count="3">
+                  <div class="ndcard" style="display:flex;align-items:center;gap:12px;background:{{ T_cardBg }};backdrop-filter:blur(10px) saturate(128%);-webkit-backdrop-filter:blur(10px) saturate(128%);border:1px solid {{ T_cardBorder }};border-radius:14px;padding:12px 14px;">
+                    <div style="flex:1;min-width:0;">
+                      <div style="font-size:14px;font-weight:600;color:{{ T_nameColor }};">{{ cls.name }}</div>
+                      <div style="font-size:12px;color:{{ T_navLabelColor }};margin-top:2px;">{{ cls.time }}</div>
+                    </div>
+                    <a href="#" style="flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;height:44px;padding:0 16px;font-size:13px;font-weight:700;border-radius:11px;background:{{ cls.actionBg }};color:{{ cls.actionColor }};">{{ cls.action }}</a>
+                  </div>
+                </sc-for>
+              </div>
+
+              <div style="font-size:12px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:{{ T_titleColor }};text-shadow:{{ T_titleShadow }};margin-bottom:8px;">Quick actions</div>
+              <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;">
+                <sc-for list="{{ quickActions }}" as="qa" hint-placeholder-count="4">
+                  <a href="#" class="ndcard" style="display:flex;align-items:center;gap:12px;background:{{ T_cardBg }};backdrop-filter:blur(10px) saturate(128%);-webkit-backdrop-filter:blur(10px) saturate(128%);border:1px solid {{ T_cardBorder }};border-radius:14px;padding:14px;min-height:44px;">
+                    <span style="width:34px;height:34px;flex-shrink:0;display:grid;place-items:center;background:{{ qa.iconBg }};border-radius:9px;" dangerouslySetInnerHTML="{{ qa.iconSvg }}"></span>
+                    <span style="font-size:13px;font-weight:600;color:{{ T_nameColor }};">{{ qa.label }}</span>
+                  </a>
+                </sc-for>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ !isTeacherMode }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;gap:10px;overflow-x:auto;padding-bottom:4px;margin:0 -16px 18px;padding-left:16px;padding-right:16px;">
+                <sc-for list="{{ kpis }}" as="k" hint-placeholder-count="5">
+                  <div class="ndcard" style="display:flex;flex-shrink:0;width:130px;background:{{ T_cardBg }};backdrop-filter:blur(10px) saturate(128%);-webkit-backdrop-filter:blur(10px) saturate(128%);border:1px solid {{ T_cardBorder }};border-radius:14px;overflow:hidden;">
+                    <div style="flex-shrink:0;width:3px;background:{{ k.toneColor }};"></div>
+                    <div style="flex:1;min-width:0;padding:14px;">
+                      <div style="font-size:10px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:{{ T_navLabelColor }};">{{ k.label }}</div>
+                      <div style="font-size:19px;font-weight:600;color:{{ T_nameColor }};margin-top:6px;">{{ k.value }}{{ k.unit }}</div>
+                      <div style="font-size:11px;font-weight:600;color:{{ k.deltaColor }};margin-top:4px;">{{ k.deltaText }}</div>
+                    </div>
+                  </div>
+                </sc-for>
+              </div>
+
+              <div style="font-size:12px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:{{ T_titleColor }};text-shadow:{{ T_titleShadow }};margin-bottom:8px;">Needs attention</div>
+              <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:20px;">
+                <sc-for list="{{ attention }}" as="item" hint-placeholder-count="3">
+                  <div class="ndcard" style="background:{{ T_cardBg }};backdrop-filter:blur(10px) saturate(128%);-webkit-backdrop-filter:blur(10px) saturate(128%);border:1px solid {{ T_cardBorder }};border-radius:14px;padding:14px;">
+                    <div style="display:flex;align-items:flex-start;gap:10px;">
+                      <span style="width:9px;height:9px;margin-top:5px;border-radius:99px;background:{{ item.dotColor }};flex-shrink:0;"></span>
+                      <div style="flex:1;min-width:0;">
+                        <div style="font-size:13px;font-weight:600;color:{{ T_nameColor }};">{{ item.title }}</div>
+                        <div style="font-size:12px;color:{{ T_navLabelColor }};margin-top:2px;">{{ item.detail }}</div>
+                      </div>
+                    </div>
+                    <a href="#" style="display:flex;align-items:center;justify-content:center;margin-top:10px;height:40px;font-size:13px;font-weight:600;border-radius:10px;background:rgba(255,255,255,0.12);color:{{ T_nameColor }};border:1px solid {{ T_cardBorder }};">{{ item.action }}</a>
+                  </div>
+                </sc-for>
+              </div>
+
+              <div style="font-size:12px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:{{ T_titleColor }};text-shadow:{{ T_titleShadow }};margin-bottom:8px;">Insights</div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px;">
+                <sc-for list="{{ insightStats }}" as="s" hint-placeholder-count="4">
+                  <a href="#" class="ndcard" style="background:{{ T_cardBg }};backdrop-filter:blur(10px) saturate(128%);-webkit-backdrop-filter:blur(10px) saturate(128%);border:1px solid {{ T_cardBorder }};border-radius:14px;padding:12px 14px;">
+                    <div style="font-size:11px;color:{{ T_navLabelColor }};">{{ s.label }}</div>
+                    <div style="font-size:16px;font-weight:600;color:{{ T_nameColor }};margin-top:4px;">{{ s.value }}</div>
+                    <div style="font-size:11px;color:{{ T_navLabelColor }};margin-top:2px;">{{ s.foot }}</div>
+                  </a>
+                </sc-for>
+              </div>
+
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+                <span style="font-size:12px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:{{ T_titleColor }};text-shadow:{{ T_titleShadow }};">Recent activity</span>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:10px;">
+                <sc-for list="{{ activity }}" as="e" hint-placeholder-count="3">
+                  <div class="ndcard" style="display:flex;gap:10px;background:{{ T_cardBg }};backdrop-filter:blur(10px) saturate(128%);-webkit-backdrop-filter:blur(10px) saturate(128%);border:1px solid {{ T_cardBorder }};border-radius:14px;padding:12px 14px;">
+                    <span style="width:8px;height:8px;margin-top:5px;border-radius:99px;background:{{ T_cardBorder }};flex-shrink:0;"></span>
+                    <div>
+                      <div style="font-size:12.5px;color:{{ T_nameColor }};">{{ e.summary }}</div>
+                      <div style="font-size:11px;color:{{ T_navLabelColor }};margin-top:2px;">{{ e.meta }}</div>
+                    </div>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-if>
+          </div>
+
+          <div style="flex-shrink:0;display:flex;align-items:stretch;padding:6px 4px 22px;background:{{ T_tabBarBg }};backdrop-filter:blur(9px) saturate(145%);-webkit-backdrop-filter:blur(9px) saturate(145%);border-top:1px solid rgba(196,155,110,0.3);box-shadow:0 -4px 16px rgba(58,32,20,0.12);">
+            <sc-for list="{{ tabs }}" as="tab" hint-placeholder-count="5">
+              <a href="#" style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 0;min-height:44px;justify-content:center;color:{{ tab.color }};">
+                <span style="width:22px;height:22px;display:block;" dangerouslySetInnerHTML="{{ tab.iconSvg }}"></span>
+                <span style="font-size:10px;font-weight:{{ tab.weight }};">{{ tab.label }}</span>
+              </a>
+            </sc-for>
+          </div>
+        </div>
+      </x-import>
+    </div>
+  </sc-if>
+
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1600,&quot;height&quot;:1000},&quot;defaultDevice&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;default&quot;:&quot;desktop&quot;,&quot;options&quot;:[&quot;desktop&quot;,&quot;mobile&quot;],&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Defaults&quot;},&quot;defaultRole&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;default&quot;:&quot;owner&quot;,&quot;options&quot;:[&quot;owner&quot;,&quot;teacher&quot;],&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Defaults&quot;}}">
+const ICONS = {
+  home: '<path d="M4 11l8-7 8 7v8.5a1.5 1.5 0 01-1.5 1.5h-13A1.5 1.5 0 016 19.5z"/><path d="M9.5 21v-6h5v6"/>',
+  mail: '<rect x="3" y="5.5" width="18" height="13" rx="2.2"/><path d="M4 6.5l8 6.2 8-6.2"/>',
+  users: '<circle cx="9" cy="7.8" r="3.6"/><path d="M2.7 20.2c.6-3.9 3.2-6.4 6.3-6.4s5.7 2.5 6.3 6.4"/><circle cx="17.5" cy="9" r="2.6"/><path d="M16 13.9c2.6.4 4.6 2.5 5.1 5.4" stroke-linecap="round"/>',
+  phone: '<path d="M7.3 3.3h2.4l1.2 4-1.7 1.6a11 11 0 005.9 5.9l1.6-1.7 4 1.2v2.4c0 1-.9 1.9-1.9 1.8C11.5 18 6 12.5 5.5 5.2c-.1-1 .8-1.9 1.8-1.9z"/>',
+  briefcase: '<rect x="2.7" y="7.6" width="18.6" height="12" rx="2.3"/><path d="M8.2 7.6V5.8a2 2 0 012-2h3.6a2 2 0 012 2v1.8"/><path d="M2.7 13h18.6"/>',
+  grid: '<rect x="3.2" y="3.2" width="7.6" height="7.6" rx="1.8"/><rect x="13.2" y="3.2" width="7.6" height="7.6" rx="1.8"/><rect x="3.2" y="13.2" width="7.6" height="7.6" rx="1.8"/><rect x="13.2" y="13.2" width="7.6" height="7.6" rx="1.8"/>',
+  calendar: '<rect x="3" y="4.8" width="18" height="15.5" rx="2.6"/><path d="M8 3v3.6M16 3v3.6M3 9.6h18"/>',
+  star: '<path d="M12 3.2l2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2-4.5-4.4 6.2-.9z" stroke-linejoin="round"/>',
+  award: '<circle cx="12" cy="8.6" r="5.3"/><path d="M8.3 13.1L6.6 21l5.4-2.9L17.4 21l-1.7-7.9"/>',
+  wallet: '<path d="M3 8a2.4 2.4 0 012.4-2.4h11.2A2.4 2.4 0 0119 8v9.2a2.4 2.4 0 01-2.4 2.4H5.4A2.4 2.4 0 013 17.2z"/><path d="M15.5 5.6L6 5.6"/><path d="M15.5 13.2h3.7v3.4h-3.7a1.7 1.7 0 010-3.4z"/>',
+  trend: '<path d="M3 16l5.4-5.4 4 4L21 6"/><path d="M15.5 6H21v5.5"/>',
+  chart: '<path d="M4 21V11M11 21V3M18 21v-8" stroke-linecap="round"/>',
+  file: '<path d="M6.5 3h7.3L18 7.2V21h-11.5z"/><path d="M13.8 3v4.2H18"/><path d="M8.7 12.5h6.6M8.7 16.3h6.6"/>',
+  bell: '<path d="M6 9.5a6 6 0 0112 0c0 4.2 1.5 5.6 2 6.3H4c.5-.7 2-2.1 2-6.3z"/><path d="M9.7 19a2.4 2.4 0 004.6 0"/>',
+  settings: '<circle cx="12" cy="12" r="3.1"/><path d="M19.4 12a7.4 7.4 0 01-.2 1.7l1.9 1.5-1.9 3.3-2.3-.8a7.4 7.4 0 01-1.5.9l-.4 2.4h-3.8l-.4-2.4a7.4 7.4 0 01-1.5-.9l-2.3.8-1.9-3.3 1.9-1.5A7.4 7.4 0 014.6 12c0-.6.1-1.1.2-1.7L2.9 8.8l1.9-3.3 2.3.8c.5-.4 1-.7 1.5-.9l.4-2.4h3.8l.4 2.4c.5.2 1 .5 1.5.9l2.3-.8 1.9 3.3-1.9 1.5c.1.6.2 1.1.2 1.7z"/>',
+  fees: '<circle cx="12" cy="12" r="9.2"/><path d="M12 6.8v10.4M9.3 15.4c0 1.1 1.1 1.9 2.7 1.9 1.8 0 2.9-.8 2.9-2s-1-1.7-2.9-2.1c-1.9-.4-2.7-1-2.7-2.1 0-1.2 1.1-2 2.7-2 1.6 0 2.7.8 2.7 1.9" stroke-linecap="round"/>',
+  attendance: '<rect x="3.3" y="4.8" width="17.4" height="15.4" rx="3.2"/><path d="M8 3.2v3.2M16 3.2v3.2M3.3 10h17.4"/><path d="M7.6 15l2.6 2.6 5.4-5.8" stroke-linecap="round"/>',
+  more: '<circle cx="12" cy="12" r="9.2"/><circle cx="7.7" cy="12" r="1.35" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.35" fill="currentColor" stroke="none"/><circle cx="16.3" cy="12" r="1.35" fill="currentColor" stroke="none"/>',
+  search: '<circle cx="10.8" cy="10.8" r="6.8"/><path d="M20.5 20.5l-4.8-4.8"/>',
+  plus: '<path d="M12 4.5v15M4.5 12h15"/>',
+  sun: '<circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.4M12 19.1v2.4M4.4 4.4l1.7 1.7M17.9 17.9l1.7 1.7M2.5 12h2.4M19.1 12h2.4M4.4 19.6l1.7-1.7M17.9 6.1l1.7-1.7" stroke-linecap="round"/>',
+  moon: '<path d="M20 14.5A8.5 8.5 0 019.5 4 8.5 8.5 0 1020 14.5z"/>'
+};
+function svgIcon(name, color, size) {
+  return { __html: `<svg width="${size||18}" height="${size||18}" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${ICONS[name]}</svg>` };
+}
+
+class Component extends DCLogic {
+  state = { device: this.props.defaultDevice || 'desktop', role: this.props.defaultRole || 'owner', dark: true };
+
+  setDevice_desktop = () => this.setState({ device: 'desktop' });
+  setDevice_mobile = () => this.setState({ device: 'mobile' });
+  setRole_owner = () => this.setState({ role: 'owner' });
+  setRole_teacher = () => this.setState({ role: 'teacher' });
+  toggleTheme = () => this.setState(s => ({ dark: !s.dark }));
+
+  money(n){ return '\u20B9' + Math.round(n).toLocaleString('en-IN'); }
+  moneyShort(n){
+    if (n >= 100000) return '\u20B9' + (n/100000).toFixed(1) + 'L';
+    if (n >= 1000) return '\u20B9' + (n/1000).toFixed(0) + 'k';
+    return '\u20B9' + n;
+  }
+
+  renderVals() {
+    const { device, role, dark } = this.state;
+    const isDesktop = device === 'desktop', isMobile = device === 'mobile';
+    const isTeacherMode = role === 'teacher';
+
+    const T = dark ? {
+      scrim: 'rgba(30,15,8,0.22)', titleColor: '#FFF8EF', titleShadow: '0 1px 4px rgba(0,0,0,0.3)', subColor: 'rgba(255,248,239,0.78)',
+      sidebarBg: 'linear-gradient(180deg,rgba(20,11,6,0.88),rgba(35,19,10,0.88))', sidebarBorder: 'rgba(255,248,239,0.1)', sidebarShadow: '4px 0 24px rgba(0,0,0,0.35)',
+      navLabelColor: 'rgba(255,248,239,0.7)', navActiveColor: '#FFF8EF',
+      cardBg: 'rgba(58,32,20,0.58)', cardBorder: 'rgba(255,248,239,0.16)', cardShadow: '0 10px 30px rgba(58,32,20,0.3)',
+      rowBorder: 'rgba(255,248,239,0.1)', nameColor: '#FFFFFF',
+      mobileHeaderBg: 'rgba(255,248,239,0.5)', mobileTitleColor: '#3A2013', mobileSubColor: '#5B4632',
+      tabBarBg: 'rgba(250,240,225,0.86)'
+    } : {
+      scrim: 'rgba(255,248,239,0.22)', titleColor: '#FFFFFF', titleShadow: '0 1px 4px rgba(0,0,0,0.25)', subColor: 'rgba(255,255,255,0.75)',
+      sidebarBg: 'rgba(255,255,255,0.14)', sidebarBorder: 'rgba(255,255,255,0.25)', sidebarShadow: '4px 0 24px rgba(0,0,0,0.2)',
+      navLabelColor: 'rgba(255,255,255,0.6)', navActiveColor: '#FFFFFF',
+      cardBg: 'rgba(255,255,255,0.14)', cardBorder: 'rgba(255,255,255,0.25)', cardShadow: '0 10px 30px rgba(0,0,0,0.2)',
+      rowBorder: 'rgba(255,255,255,0.16)', nameColor: '#FFFFFF',
+      mobileHeaderBg: 'rgba(255,248,239,0.8)', mobileTitleColor: '#3A2013', mobileSubColor: '#5B4632',
+      tabBarBg: 'rgba(255,251,244,0.9)'
+    };
+    const Tp = {};
+    Object.keys(T).forEach(k => { Tp['T_' + k] = T[k]; });
+
+    const TONE = { positive: '#8FD99A', negative: '#F0917C', caution: '#F0C177', neutral: dark ? 'rgba(255,248,239,0.4)' : 'rgba(58,32,20,0.3)' };
+    const DELTA_TONE = dark
+      ? { positive: '#8FD99A', negative: '#F0917C', caution: '#F0C177', neutral: 'rgba(255,248,239,0.7)' }
+      : { positive: '#3E6B31', negative: '#9A3A22', caution: '#8F5F0F', neutral: '#5B4632' };
+    const TONE_BG = dark
+      ? { positive: 'rgba(94,166,101,0.14)', negative: 'rgba(224,94,74,0.14)', caution: 'rgba(224,166,74,0.14)', neutral: 'rgba(58,32,20,0.35)' }
+      : { positive: '#E9F5EF', negative: '#FBE4DC', caution: '#FBEEDC', neutral: 'rgba(255,251,244,0.7)' };
+    const TONE_BORDER = dark
+      ? { positive: 'rgba(143,217,154,0.3)', negative: 'rgba(240,145,124,0.3)', caution: 'rgba(240,193,119,0.3)', neutral: 'rgba(255,248,239,0.16)' }
+      : { positive: 'rgba(62,107,49,0.25)', negative: 'rgba(176,67,42,0.25)', caution: 'rgba(184,129,30,0.25)', neutral: 'rgba(255,255,255,0.6)' };
+
+    const kpisRaw = [
+      { label: 'Active students', value: '342', unit: '', deltaText: '+12 this month', tone: 'neutral' },
+      { label: 'Collected this month', value: this.money(842000), unit: '', deltaText: '+6% vs last month', tone: 'positive' },
+      { label: 'Outstanding', value: this.money(118500), unit: '', deltaText: '4 overdue', tone: 'negative' },
+      { label: 'Attendance, 30 days', value: '87', unit: '%', deltaText: '+3 pts', tone: 'positive' },
+      { label: 'Applications waiting', value: '9', unit: '', deltaText: 'in pipeline', tone: 'caution' }
+    ];
+    const kpis = kpisRaw.map(k => ({ ...k, toneColor: TONE[k.tone], deltaColor: DELTA_TONE[k.tone], toneBg: TONE_BG[k.tone], toneBorder: TONE_BORDER[k.tone] }));
+
+    const attentionRaw = [
+      { severity: 'high', title: '4 overdue invoices', detail: '\u20B91,18,500 outstanding past the due date.', action: 'Chase payments' },
+      { severity: 'high', title: '3 students are not in a batch', detail: 'They appear on no roll call until placed.', action: 'Place students' },
+      { severity: 'medium', title: '5 approved applicants not yet enrolled', detail: 'Families were told they have a place.', action: 'Enrol them' },
+      { severity: 'medium', title: '2 registers not marked this week', detail: 'Advanced Masters, Foundation Level 6.', action: 'Mark attendance' }
+    ];
+    const SEV_DOT = { high: '#F0917C', medium: '#F0C177', low: '#8FBFF0' };
+    const attention = attentionRaw.map(a => ({ ...a, dotColor: SEV_DOT[a.severity] }));
+
+    const STATE_BADGE = dark ? {
+      marked: ['rgba(94,166,101,0.16)', '#8FD99A'], running: ['rgba(224,166,74,0.16)', '#F0C177'],
+      missed: ['rgba(224,94,74,0.18)', '#F0917C'], upcoming: ['rgba(255,248,239,0.08)', 'rgba(255,248,239,0.7)']
+    } : {
+      marked: ['#E9F1E6', '#3E6B31'], running: ['#FBEEDC', '#8F5F0F'],
+      missed: ['#FBE4DC', '#9A3A22'], upcoming: ['#EFE7DA', '#7A6A58']
+    };
+    const todayClassesRaw = [
+      { name: 'Foundation Level 1', teacher: 'Ramesh Rao', time: '3:00\u20134:00pm', state: 'marked', rate: 100 },
+      { name: 'Foundation Level 2', teacher: 'Lakshmi Devi', time: '4:00\u20135:00pm', state: 'marked', rate: 96 },
+      { name: 'Foundation Level 4', teacher: 'Ramesh Rao', time: '5:00\u20136:00pm', state: 'running', rate: null },
+      { name: 'Advanced Masters', teacher: 'Sujatha Iyer', time: '4:30\u20135:30pm', state: 'missed', rate: null },
+      { name: 'Foundation Level 6', teacher: 'Sujatha Iyer', time: '5:30\u20136:30pm', state: 'marked', rate: 89 }
+    ];
+    const STATE_LABEL = { marked: 'Register marked', running: 'In progress', missed: 'Not marked', upcoming: 'Later today' };
+    const todayClasses = todayClassesRaw.map(c => ({
+      name: c.name, meta: `${c.time} \u00b7 ${c.teacher}`,
+      badgeLabel: c.rate !== null ? `${c.rate}% present` : STATE_LABEL[c.state],
+      badgeBg: STATE_BADGE[c.state][0], badgeText: STATE_BADGE[c.state][1]
+    }));
+
+    const incomeRaw = [
+      { label: 'Feb', income: 610000 }, { label: 'Mar', income: 720000 }, { label: 'Apr', income: 690000 },
+      { label: 'May', income: 780000 }, { label: 'Jun', income: 805000 }, { label: 'Jul', income: 842000 }
+    ];
+    const maxIncome = Math.max(...incomeRaw.map(b => b.income));
+    const incomeBars = incomeRaw.map(b => ({ label: b.label, shortValue: this.moneyShort(b.income), heightPx: Math.round((b.income / maxIncome) * 110) + 10 }));
+
+    const levelsRaw = [{ label: 'Foundation', value: 210 }, { label: 'Intermediate', value: 84 }, { label: 'Advanced', value: 48 }];
+    const maxLevel = Math.max(...levelsRaw.map(l => l.value));
+    const levelBars = levelsRaw.map(l => ({ ...l, widthPct: Math.round((l.value / maxLevel) * 100) }));
+
+    const activity = [
+      { summary: 'Lakshmi Devi marked attendance for Foundation Level 1', meta: '12 minutes ago' },
+      { summary: 'Payment recorded \u2014 receipt #RC-2291, \u20B93,500', meta: '40 minutes ago' },
+      { summary: "Rohan Mehta's application moved to Reviewing", meta: '2 hours ago' },
+      { summary: 'New student Ananya Krishnan admitted', meta: '5 hours ago' }
+    ];
+
+    const teacherClassesRaw = [
+      { name: 'Foundation Level 1', time: '3:00\u20134:00pm', done: true, action: 'View register' },
+      { name: 'Foundation Level 2', time: '4:00\u20135:00pm', done: true, action: 'View register' },
+      { name: 'Advanced Masters', time: '4:30\u20135:30pm', done: false, action: 'Mark register' }
+    ];
+    const teacherClasses = teacherClassesRaw.map(c => ({
+      ...c,
+      actionBg: c.done ? (dark ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.85)') : '#B45B34',
+      actionColor: c.done ? T.nameColor : '#fff'
+    }));
+
+    const svgIconLocal = (path, color) => ({ __html: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${path}</svg>` });
+    const quickActionsRaw = [
+      { label: 'Collect fee', color: '#B45B34', bg: dark ? 'rgba(180,91,52,0.22)' : '#FBEEDC', icon: ICONS.fees },
+      { label: 'Add student', color: '#5A6FA8', bg: dark ? 'rgba(90,111,168,0.2)' : '#E7EAF5', icon: ICONS.users },
+      { label: 'Search', color: '#3E7DBF', bg: dark ? 'rgba(62,125,191,0.2)' : '#E4F0FA', icon: ICONS.search },
+      { label: 'Attendance', color: '#3E6B31', bg: dark ? 'rgba(62,107,49,0.2)' : '#E9F1E6', icon: ICONS.attendance }
+    ];
+    const quickActions = quickActionsRaw.map(q => ({ label: q.label, iconBg: q.bg, iconSvg: svgIconLocal(q.icon, q.color) }));
+
+    const insightStats = [
+      { label: 'This month', value: this.moneyShort(842000), foot: 'collected' },
+      { label: 'Attendance', value: '87%', foot: 'last 30 days' },
+      { label: 'Applications', value: '15', foot: 'in pipeline' },
+      { label: 'Roll', value: '342', foot: '86% seats filled' }
+    ];
+
+    const registersPending = 1;
+
+    const navGroups = [
+      { label: 'Overview', items: [{ label: 'Dashboard', href: '#', active: true, icon: 'home' }] },
+      { label: 'People', items: [
+        { label: 'Admissions', href: '#', icon: 'mail' }, { label: 'Students', href: '#', icon: 'users' },
+        { label: 'Parents', href: '#', icon: 'phone' }, { label: 'Staff', href: '#', icon: 'briefcase' }
+      ]},
+      { label: 'Teaching', items: [
+        { label: 'Batches', href: '#', icon: 'grid' }, { label: 'Timetable', href: '#', icon: 'calendar' },
+        { label: 'Programmes', href: '#', icon: 'star' }, { label: 'Certificates', href: '#', icon: 'award' }
+      ]},
+      { label: 'Money', items: [{ label: 'Fee collection', href: '#', icon: 'wallet' }, { label: 'Finance', href: '#', icon: 'trend' }] },
+      { label: 'Insight', items: [
+        { label: 'Analytics', href: '#', icon: 'chart' }, { label: 'Reports', href: '#', icon: 'file' },
+        { label: 'Notifications', href: '#', icon: 'bell' }, { label: 'Settings', href: '#', icon: 'settings' }
+      ]}
+    ];
+    const navInactiveColor = dark ? 'rgba(255,248,239,0.85)' : 'rgba(255,255,255,0.88)';
+    navGroups.forEach(g => g.items.forEach(it => {
+      const color = it.active ? '#FFF8EF' : navInactiveColor;
+      it.iconSvg = svgIcon(it.icon, color, 18);
+      it.bg = it.active ? 'rgba(180,91,52,0.55)' : 'transparent';
+      it.color = color;
+    }));
+
+    const TAB_DEF = [
+      { key: 'home', icon: 'home', label: 'Home', active: true }, { key: 'students', icon: 'users', label: 'Students', active: false },
+      { key: 'fees', icon: 'fees', label: 'Fees', active: false }, { key: 'attendance', icon: 'attendance', label: 'Attendance', active: false },
+      { key: 'more', icon: 'more', label: 'More', active: false }
+    ];
+    const tabs = TAB_DEF.map(t => {
+      const color = t.active ? '#E2622B' : '#6B5236';
+      return { label: t.label, color, weight: t.active ? '700' : '500', iconSvg: svgIcon(t.icon, color, 22) };
+    });
+
+    const segBtn = (active) => `padding:7px 14px;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;background:${active ? '#B45B34' : 'transparent'};color:${active ? '#fff' : 'rgba(255,248,239,0.8)'};`;
+
+    const hour = new Date().getHours();
+    const part = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+
+    return {
+      ...Tp,
+      isDesktop, isMobile, isTeacherMode,
+      setDevice_desktop: this.setDevice_desktop, setDevice_mobile: this.setDevice_mobile,
+      deviceBtnStyle_desktop: segBtn(isDesktop), deviceBtnStyle_mobile: segBtn(isMobile),
+      setRole_owner: this.setRole_owner, setRole_teacher: this.setRole_teacher,
+      roleBtnStyle_owner: segBtn(!isTeacherMode), roleBtnStyle_teacher: segBtn(isTeacherMode),
+      toggleTheme: this.toggleTheme, themeLabel: dark ? 'Light' : 'Dark', icon_theme: svgIcon(dark ? 'sun' : 'moon', '#FFF8EF', 15),
+      icon_search: svgIcon('search', '#6B5642', 15),
+      sidebarWidth: '256px', navGroups, tabs,
+      userInitials: isTeacherMode ? 'LD' : 'PK', userName: isTeacherMode ? 'Lakshmi Devi' : 'Priya Kumar',
+      roleLabel: isTeacherMode ? 'Teacher & Reception' : 'Owner & Accountant',
+      greeting: `${part}, ${isTeacherMode ? 'Lakshmi' : 'Priya'}`,
+      todayLong: new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' }),
+      kpiCols: isTeacherMode ? 4 : 5,
+      kpis: isTeacherMode ? [
+        { label: 'Classes today', value: '3', unit: '', deltaText: '1 pending', toneColor: TONE.caution, deltaColor: DELTA_TONE.caution, toneBg: TONE_BG.caution, toneBorder: TONE_BORDER.caution },
+        { label: 'My batches', value: '4', unit: '', deltaText: '', toneColor: TONE.neutral, deltaColor: DELTA_TONE.neutral, toneBg: TONE_BG.neutral, toneBorder: TONE_BORDER.neutral },
+        { label: 'Students taught', value: '76', unit: '', deltaText: '', toneColor: TONE.neutral, deltaColor: DELTA_TONE.neutral, toneBg: TONE_BG.neutral, toneBorder: TONE_BORDER.neutral },
+        { label: 'Attendance, 30 days', value: '89', unit: '%', deltaText: '', toneColor: TONE.positive, deltaColor: DELTA_TONE.positive, toneBg: TONE_BG.positive, toneBorder: TONE_BORDER.positive }
+      ] : kpis,
+      attention, todayClasses, registersDone: 4, registersTotal: 6,
+      moneyCollected: this.money(842000), moneyOutstanding: this.money(118500), moneyNet: this.money(268000),
+      incomeBars, rollTotal: 342, levelBars, activity,
+      teacherClasses, teacherMissing: [{ label: 'Foundation Level 6 \u00b7 26 Jul' }],
+      classesToday: teacherClasses.length, registersPending, registersPendingSuffix: registersPending === 1 ? '' : 's',
+      quickActions, insightStats
+    };
+  }
+}
+</script>
+</body>
+</html>
