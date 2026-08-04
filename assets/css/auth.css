@@ -209,6 +209,78 @@
 }
 .auth-back-link:hover { color: #fff; }
 
+/* ==========================================================================
+   SIGN-IN CONTROLS  (UAT ENH-611)
+
+   The comment below this block has been true since the split — and wrong for
+   this app. It reuses .btn / .btn-block / .switch "for semantics", restyling
+   only the modifiers, on the assumption that components.css supplies the base
+   rules. natyam-mobile deliberately does not load components.css (see the note
+   in index.html), so those bases never arrived: the buttons fell back to the
+   browser's default <button>, which is why the sign-in button showed a stock
+   grey border, the Google mark sat off-centre against its label, and "Remember
+   me" was still a square checkbox rather than the toggle the markup already
+   asks for.
+
+   The bases are therefore defined here, once, in this app's own auth
+   stylesheet — sized and rounded to match .auth-input so the whole card reads
+   as one set of controls.
+   ========================================================================== */
+
+.glass-card .btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    gap: var(--space-2);
+    width: 100%; min-height: 50px; padding: 0 var(--space-4);
+    font-family: inherit; font-size: var(--text-sm); font-weight: var(--weight-semibold);
+    line-height: 1; white-space: nowrap; cursor: pointer;
+    /* No stock UA border, and the same radius as .field-fl .auth-input so the
+       sign-in button reads as part of the same set of controls — ENH-611 asks
+       for exactly that pairing. .btn-google overrides it to a pill below. */
+    border: 1px solid transparent; border-radius: var(--radius-md);
+    transition: background-color var(--duration-fast) var(--ease-standard),
+                border-color var(--duration-fast) var(--ease-standard),
+                box-shadow var(--duration-fast) var(--ease-standard);
+}
+.glass-card .btn:disabled { opacity: 0.55; cursor: default; }
+
+/* The Google mark is an <img>/<svg> ahead of the label; the flex centring above
+   handles alignment, this only stops it stretching with the button. */
+.glass-card .btn-google {
+    /* The "rounded bubble" of ENH-611 — deliberately a different shape from the
+       sign-in button, which matches the inputs instead. */
+    border-radius: var(--radius-full);
+    gap: var(--space-3);
+    background: #FFFFFF; color: #1F1F1F;
+    border-color: rgba(255, 255, 255, .5);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, .18);
+}
+.glass-card .btn-google:hover:not(:disabled) { background: #F2F2F2; }
+.glass-card .btn-google > svg,
+.glass-card .btn-google > img { flex-shrink: 0; width: 18px; height: 18px; }
+
+/* -------------------------------------------------------------- SWITCH --- */
+/* "Remember me" — the markup was always a switch; this is the switch. */
+.switch { position: relative; display: inline-flex; align-items: center; gap: var(--space-2); cursor: pointer; }
+.switch input { position: absolute; opacity: 0; width: 0; height: 0; }
+.switch-track {
+    position: relative; flex-shrink: 0;
+    width: 40px; height: 23px;
+    background: rgba(255, 255, 255, .22);
+    border-radius: var(--radius-full);
+    transition: background-color var(--duration-normal) var(--ease-standard);
+}
+.switch-track::after {
+    content: ""; position: absolute; top: 3px; left: 3px;
+    width: 17px; height: 17px;
+    background: #FFFFFF; border-radius: var(--radius-full);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, .35);
+    transition: transform var(--duration-normal) var(--ease-spring);
+}
+.switch input:checked + .switch-track::after { transform: translateX(17px); }
+.switch input:focus-visible + .switch-track {
+    box-shadow: 0 0 0 3px rgba(240, 196, 106, .45);
+}
+
 /* Reuse the app's real .btn/.btn-google/.btn-primary/.btn-secondary/.btn-block/
    .btn-link classes for semantics; only restyle them here, scoped, never bare. */
 .glass-card .btn-google { margin-bottom: var(--space-3); }
@@ -250,6 +322,8 @@
     color: var(--logo-gold); text-transform: uppercase;
 }
 
+/* The remember/forgot row sits between the password field and the sign-in
+   button, so it carries the breathing room on both sides (UAT ENH-611). */
 .auth-row-between {
     display: flex; align-items: center; justify-content: space-between; font-size: var(--text-xs);
     margin-bottom: var(--space-5); color: rgba(255, 255, 255, .7); gap: var(--space-3);

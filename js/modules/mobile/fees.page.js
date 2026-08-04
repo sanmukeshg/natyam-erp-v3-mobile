@@ -57,6 +57,10 @@ export default class MobileFeesPage extends Page {
         this.detail = null;           // { student, fees }
         this.payingInvoice = null;    // the invoice the form is collecting against
         this.busy = false;
+        // Arriving from a student profile’s "Collect fee" (UAT BUG-602): that
+        // student’s ledger opens straight away, so the hand-off lands on the
+        // invoice list rather than on a search box that has to be retyped.
+        this.openStudentId = this.query.student || null;
     }
 
     async render(container) {
@@ -80,6 +84,12 @@ export default class MobileFeesPage extends Page {
             this.rows = rows;
             this.summary = summary;
             this.paint();
+
+            if (this.openStudentId) {
+                const wanted = this.openStudentId;
+                this.openStudentId = null;
+                await this.open(wanted);
+            }
         } catch (err) {
             if (this.disposed) return;
             console.error('Fees failed to load', err);
@@ -275,31 +285,39 @@ export default class MobileFeesPage extends Page {
     }
 
     /**
-     * The collect form, occupying the whole sheet. Deliberately not shown
-     * alongside the ledger: on a 375px screen a form and a list of invoices
-     * cannot both be read, and a half-visible ledger is how somebody settles
-     * the wrong invoice.
+     * The collect form (UAT ENH-616).
+     *
+     * A centred modal, matching every other dialog in the app rather than being
+     * the one bottom sheet — and, critically, nothing here is auto-focused. The
+     * amount arrives pre-filled with the outstanding balance; the sequence
+     * somebody actually follows is *verify the amount, pick the date, pick the
+     * method, record* — none of which starts with typing, so the keyboard
+     * appears only if they choose to change the figure.
+     *
+     * It still replaces the ledger rather than sitting beside it: on a 375px
+     * screen a form and a list of invoices cannot both be read, and a
+     * half-visible ledger is how somebody settles the wrong invoice.
      */
     paintPayForm(host) {
         const invoice = this.payingInvoice;
         const { student } = this.detail;
 
         render(host, html`
-            <div class="m-sheet-scrim" data-action="cancel-pay"></div>
-            <div class="m-profile" role="dialog" aria-modal="true" aria-label="Collect payment">
-                <div class="m-profile-head">
-                    <button class="m-icon-btn" data-action="cancel-pay" aria-label="Back to ledger">
-                        ${raw(icon('arrow-left', { size: 16 }))}
-                    </button>
-                    <div style="min-width:0;flex:1;">
-                        <h2 class="m-profile-name">Collect from ${student?.name || 'student'}</h2>
-                        <p class="m-profile-sub">
+            <div class="m-modal-scrim" data-action="cancel-pay">
+                <div class="m-modal" role="dialog" aria-modal="true" aria-label="Collect payment" tabindex="-1">
+                <div class="m-modal-head">
+                    <div style="min-width:0;">
+                        <h2 class="m-modal-title">Collect from ${student?.name || 'student'}</h2>
+                        <p class="m-modal-sub">
                             ${invoice.number || 'Invoice'} · ${formatMoney(invoice.balance)} outstanding
                         </p>
                     </div>
+                    <button class="m-modal-close" data-action="cancel-pay" aria-label="Close">
+                        ${raw(icon('x', { size: 16 }))}
+                    </button>
                 </div>
 
-                <form class="m-profile-body" data-role="pay-form" data-id="${invoice.id}">
+                <form class="m-modal-body" data-role="pay-form" data-id="${invoice.id}">
                     <label class="m-field">
                         <span>Amount</span>
                         <input class="m-input m-input-amount" type="number" name="amount" required
@@ -334,11 +352,12 @@ export default class MobileFeesPage extends Page {
                     </p>
                 </form>
 
-                <div class="m-sheet-foot">
-                    <button class="m-btn m-btn-ghost" data-action="cancel-pay">Cancel</button>
-                    <button class="m-btn" style="flex:1;" data-action="submit-pay" ${this.busy ? 'disabled' : ''}>
+                <div class="m-modal-foot">
+                    <button class="m-form-cancel" data-action="cancel-pay">Cancel</button>
+                    <button class="m-form-save" data-action="submit-pay" ${this.busy ? 'disabled' : ''}>
                         ${this.busy ? 'Recording…' : 'Record payment'}
                     </button>
+                </div>
                 </div>
             </div>
         `);
@@ -416,11 +435,13 @@ export default class MobileFeesPage extends Page {
         this.onDispose(on(root, 'click', '[data-action="open"]', (_e, t) => this.open(t.dataset.id)));
         this.onDispose(on(root, 'click', '[data-action="close-detail"]', () => this.close()));
         this.onDispose(on(root, 'click', '.m-profile', (event) => event.stopPropagation()));
+        this.onDispose(on(root, 'click', '.m-modal', (event) => event.stopPropagation()));
 
         this.onDispose(on(root, 'click', '[data-action="collect"]', (_e, t) => {
             this.payingInvoice = this.detail?.fees.invoices.find((i) => i.id === t.dataset.id) || null;
             this.paintSheet();
-            this.container.querySelector('[name="amount"]')?.focus();
+            // The dialog takes focus, not the amount — see paintPayForm().
+            this.container.querySelector('.m-modal')?.focus();
         }));
 
         this.onDispose(on(root, 'click', '[data-action="cancel-pay"]', () => {
@@ -461,6 +482,9 @@ function stat(label, value, tone, note) {
     `;
 }
 
-function metric(label, value) {
-    return html`<div class="m-metric"><div class="m-metric-label">${label}</div><div class="m-metric-value">${value}</div></div>`;
+function metric(label, value, tone = null) {
+    return html`<div class="m-metric"${tone ? raw(` data-tone="${tone}"`) : ''}>
+        <span class="m-metric-value">${value}</span>
+        <span class="m-metric-label">${label}</span>
+    </div>`;
 }

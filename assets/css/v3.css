@@ -97,7 +97,6 @@
        tops out at 5.35:1 and the darkest colour in this palette reaches 3.83.
        Nothing in the ramp passes AA there. 0.62 keeps the warm translucent
        finish and gives the ink ramp room to be read. */
-    --v3-appbar-bg:   rgba(255, 248, 239, 0.62);
     --v3-tabbar-bg:   rgba(255, 248, 239, 0.62);
 
     --v3-tone-bg-positive: rgba(94, 166, 101, 0.14);
@@ -134,7 +133,6 @@
     --v3-muted:       rgba(255, 255, 255, 0.75);
     --v3-ghost-bg:    rgba(255, 255, 255, 0.16);
 
-    --v3-appbar-bg:   rgba(255, 248, 239, 0.68);
     --v3-tabbar-bg:   rgba(255, 248, 239, 0.68);
 
     /* TONE BACKGROUNDS — v3 FIX, diverges from the design's light variant.
@@ -173,38 +171,51 @@
 
 /* -------------------------------------------------------------- APP BAR --- */
 
+/*
+ * No panel of its own — the bar shows the app background straight through.
+ *
+ * It can be fully transparent because it is NOT part of the scroller: the
+ * shell is a flex column and `.m-content` scrolls separately, so nothing ever
+ * passes behind the bar. (`.m-subhead` further down is sticky *inside* that
+ * scroller and therefore still needs a backdrop — see the note there.)
+ */
 .m-appbar {
     flex-shrink: 0;
     display: flex; align-items: center; gap: 10px;
-    padding: calc(var(--v3-safe-top) + 12px) var(--space-4) 12px;
-    background: var(--v3-appbar-bg);
-    backdrop-filter: blur(9px) saturate(145%);
-    -webkit-backdrop-filter: blur(9px) saturate(145%);
-    border-bottom: 1px solid rgba(255, 248, 239, 0.35);
+    padding: calc(var(--v3-safe-top) + 7px) var(--space-4) 7px;
+    background: none;
 }
-.m-appbar-mark {
-    width: 36px; height: 36px; flex-shrink: 0; border-radius: 10px;
-    overflow: hidden; display: grid; place-items: center;
-    background: var(--v3-terracotta-deep);
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
-}
-.m-appbar-mark img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .m-appbar-text { min-width: 0; flex: 1; }
 .m-appbar-title {
-    font-size: 19px; font-weight: var(--weight-bold); color: var(--v3-ink);
+    font-size: 18px; font-weight: var(--weight-bold); color: var(--v3-name);
+    /* Reads over the backdrop art, which is light in places. */
+    text-shadow: 0 1px 3px rgba(20, 11, 6, 0.55);
+    line-height: 1.25;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-/* --v3-ink-soft (#5B4632) measures 2.3:1 on this bar. The subtitle carries
-   the branch name, which is not decoration, so it takes the darker ink. */
-.m-appbar-sub { font-size: 11.5px; font-weight: var(--weight-semibold); color: #4A3826; margin-top: 1px; }
+/* The subtitle carries the branch name, which is not decoration — it takes the
+   full cream rather than the muted tint so it stays legible over the art. */
+.m-appbar-sub {
+    font-size: 12.5px; font-weight: var(--weight-semibold);
+    color: var(--v3-cream); margin-top: 1px;
+    text-shadow: 0 1px 3px rgba(20, 11, 6, 0.55);
+}
 
 .m-avatar-btn {
-    width: var(--v3-tap); height: var(--v3-tap); flex-shrink: 0;
+    position: relative;
+    width: 34px; height: 34px; flex-shrink: 0;
     display: grid; place-items: center; padding: 0;
     background: none; border: none; cursor: pointer;
 }
+/* Hit area stays at the 44px touch floor even though the button now occupies
+   34px of header height. */
+.m-avatar-btn::after {
+    content: ''; position: absolute;
+    top: 50%; left: 50%; transform: translate(-50%, -50%);
+    width: var(--v3-tap); height: var(--v3-tap);
+}
 .m-avatar {
-    width: 36px; height: 36px; display: grid; place-items: center;
+    width: 32px; height: 32px; display: grid; place-items: center;
     font-size: var(--text-xs); font-weight: var(--weight-bold); color: #fff;
     background: var(--v3-terracotta-deep); border-radius: var(--v3-radius-pill);
 }
@@ -213,8 +224,10 @@
 
 .m-content {
     flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch;
-    padding: 14px var(--space-4) var(--space-4);
+    padding: 0 var(--space-4) var(--space-4);
 }
+/* Pages with no fixed subhead still need space under the app bar. */
+.m-content > :first-child:not(.m-subhead) { margin-top: 14px; }
 
 .m-section-label {
     font-size: var(--text-xs); font-weight: var(--weight-bold);
@@ -385,6 +398,25 @@
 .m-btn-ghost:hover { background: rgba(255, 255, 255, 0.2); color: var(--v3-name); }
 .m-btn-block { display: flex; width: 100%; margin-top: 10px; }
 
+/*
+ * Record actions inside a profile sheet (UAT BUG-601, BUG-602).
+ *
+ * A wrapping grid rather than a row: the student sheet carries six actions and
+ * a phone cannot fit those side by side. Two per line at 375px, and each cell
+ * keeps the 44px touch floor `.m-btn` already sets, so nothing shrinks below
+ * a thumb.
+ */
+.m-actions {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 8px;
+}
+.m-actions .m-btn {
+    width: 100%; padding: 0 12px; font-size: var(--text-xs);
+    /* .m-btn sets no gap, so the icon sat flush against the label. */
+    gap: 6px;
+}
+.m-actions .m-btn > svg { flex-shrink: 0; }
+
 /* ---- attention card ---- */
 .m-attn { padding: 14px; }
 .m-attn-head { display: flex; align-items: flex-start; gap: 10px; }
@@ -464,15 +496,28 @@
  * position. Keep this in step with `.m-content`'s padding-top.
  */
 .m-subhead {
-    position: sticky; top: -14px; z-index: 5;
-    margin: -14px calc(var(--space-4) * -1) 12px;
-    padding: 12px var(--space-4) 10px;
-    background: var(--v3-appbar-bg);
-    backdrop-filter: blur(9px) saturate(145%); -webkit-backdrop-filter: blur(9px) saturate(145%);
-    border-bottom: 1px solid rgba(255, 248, 239, 0.35);
+    /* top:0 with no negative offset — it never travels, so the list appears to
+       scroll underneath a fixed header, which is what BUG-604 asks for. */
+    position: sticky; top: 0; z-index: 5;
+    margin: 0 calc(var(--space-4) * -1) 10px;
+    padding: 10px var(--space-4) 8px;
+    /*
+     * No band, no tint — this paints the app background itself.
+     *
+     * It cannot simply be transparent: it is sticky inside the scroller, so
+     * the list passes behind it and would show through. Instead it repeats
+     * `.m-shell`s exact background declaration. `background-attachment: fixed`
+     * anchors the image to the VIEWPORT rather than to the element, so this
+     * paints the identical pixels the shell would have painted at the same
+     * place — seamless, while still being opaque enough to hide the rows
+     * sliding underneath.
+     */
+    background:
+        linear-gradient(var(--v3-scrim), var(--v3-scrim)),
+        var(--v3-backdrop) center / cover no-repeat fixed;
 }
 .m-subhead-row { display: flex; gap: 8px; }
-.m-subhead-note { margin: 8px 0 0; font-size: 11.5px; font-weight: var(--weight-semibold); color: var(--v3-ink-soft); }
+.m-subhead-note { margin: 6px 0 0; font-size: 12.5px; font-weight: var(--weight-semibold); color: var(--v3-muted); }
 
 /* The design draws this pair at 42px. Raised to the 44px touch floor
    (var(--v3-tap)) instead: the split spec calls for touch-friendly controls,
@@ -480,24 +525,33 @@
    deviation from the mock is the right trade against a target that misses
    the accessibility floor — noted here so it reads as a decision, not drift. */
 .m-search {
+    /* Fills the row up to the trailing control — no hole between the two. */
     flex: 1; display: flex; align-items: center; gap: 8px;
-    height: var(--v3-tap); padding: 0 12px;
-    background: rgba(255, 255, 255, 0.75);
-    border: 1px solid rgba(196, 155, 110, 0.3);
-    border-radius: 12px; color: #6B5642;
+    height: 40px; padding: 0 12px;
+    /* Glass over the backdrop rather than an opaque panel. */
+    background: rgba(255, 255, 255, 0.13);
+    backdrop-filter: blur(8px) saturate(130%); -webkit-backdrop-filter: blur(8px) saturate(130%);
+    border: 1px solid var(--v3-card-border);
+    border-radius: var(--v3-radius-item); color: var(--v3-muted);
+}
+.m-search:focus-within {
+    border-color: var(--v3-terracotta);
+    box-shadow: 0 0 0 3px rgba(180, 91, 52, 0.3);
 }
 .m-search input {
     flex: 1; min-width: 0; background: none; border: none; outline: none;
-    font: inherit; color: var(--v3-ink);
+    font: inherit; color: var(--v3-name);
     /* 16px: anything smaller and iOS Safari zooms the page on focus. */
     font-size: var(--text-md);
 }
-.m-search input::placeholder { color: #6B5642; }
+.m-search input::placeholder { color: var(--v3-muted); }
 
 .m-icon-btn {
     flex-shrink: 0; width: var(--v3-tap); height: var(--v3-tap); display: grid; place-items: center;
-    cursor: pointer; background: rgba(255, 255, 255, 0.75);
-    border: 1px solid rgba(196, 155, 110, 0.3); border-radius: 12px; color: #6B5642;
+    cursor: pointer; background: rgba(255, 255, 255, 0.13);
+    backdrop-filter: blur(8px) saturate(130%); -webkit-backdrop-filter: blur(8px) saturate(130%);
+    border: 1px solid var(--v3-card-border);
+    border-radius: var(--v3-radius-item); color: var(--v3-name);
 }
 .m-icon-btn[aria-expanded="true"] { background: var(--v3-terracotta); border-color: var(--v3-terracotta); color: #fff; }
 
@@ -514,8 +568,9 @@
     flex-shrink: 0; height: 33px; padding: 0 13px; cursor: pointer;
     font-size: var(--text-xs); font-weight: var(--weight-semibold); font-family: inherit;
     border-radius: var(--v3-radius-pill);
-    background: rgba(255, 255, 255, 0.7); color: var(--v3-ink);
-    border: 1px solid rgba(196, 155, 110, 0.3);
+    background: rgba(255, 255, 255, 0.13); color: var(--v3-name);
+    backdrop-filter: blur(8px) saturate(130%); -webkit-backdrop-filter: blur(8px) saturate(130%);
+    border: 1px solid var(--v3-card-border);
 }
 .m-pill[aria-pressed="true"] { background: var(--v3-terracotta); border-color: var(--v3-terracotta); color: #fff; }
 
@@ -536,9 +591,7 @@
     display: block; font-size: 11.5px; color: var(--v3-muted); margin-top: 2px;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.m-badge[data-fee="overdue"] { background: rgba(224, 94, 74, 0.18); color: var(--v3-negative); }
-.m-badge[data-fee="due"]     { background: rgba(224, 166, 74, 0.16); color: var(--v3-caution); }
-.m-badge[data-fee="clear"]   { background: rgba(94, 166, 101, 0.16); color: var(--v3-positive); }
+/* The data-fee tones are declared once, under INVOICES below. */
 
 /* ------------------------------------------------------------------ FAB --- */
 
@@ -594,13 +647,38 @@
 }
 .m-profile-note { margin: 0; font-size: 12.5px; color: var(--v3-muted); }
 
-.m-metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+/*
+ * UAT BUG-603 / ENH-610.
+ *
+ * The two spans inside a metric were INLINE, so they ran together and rendered
+ * "₹1.14LIn" — the reported symptom. `margin-top` on an inline element does
+ * nothing, which is why the existing 2px never separated them. Stacking them
+ * fixes the spacing properly rather than papering over it with a space
+ * character in the markup.
+ *
+ * The gap also widens so the cards read as separate tiles rather than one
+ * merged block.
+ */
+.m-metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
 .m-metric {
-    padding: 9px 10px; border-radius: 10px;
+    display: flex; flex-direction: column; gap: 3px;
+    padding: 10px 11px; border-radius: 10px;
     background: rgba(255, 255, 255, 0.06); border: 1px solid var(--v3-row-border);
 }
-.m-metric-label { font-size: 9.5px; color: var(--v3-muted); text-transform: uppercase; letter-spacing: 0.03em; }
-.m-metric-value { font-size: var(--text-base); font-weight: var(--weight-semibold); color: var(--v3-name); margin-top: 2px; }
+.m-metric-label {
+    display: block; font-size: 9.5px; color: var(--v3-muted);
+    text-transform: uppercase; letter-spacing: 0.03em;
+}
+.m-metric-value {
+    display: block; font-size: var(--text-base);
+    font-weight: var(--weight-semibold); color: var(--v3-name);
+}
+/* Semantic tones — money in reads green, money out red, margin the brand
+   terracotta. Applied to the VALUE only; the label stays muted so the colour
+   carries meaning rather than decorating the whole tile. */
+.m-metric[data-tone="in"]     .m-metric-value { color: var(--v3-positive); }
+.m-metric[data-tone="out"]    .m-metric-value { color: var(--v3-negative); }
+.m-metric[data-tone="margin"] .m-metric-value { color: var(--v3-caution); }
 
 .m-notice { padding: 12px 14px; border-radius: 10px; font-size: 12.5px; color: var(--v3-name); }
 .m-notice[data-tone="caution"] { background: rgba(214, 164, 44, 0.16); border: 1px solid rgba(214, 164, 44, 0.4); }
@@ -627,16 +705,17 @@
 .m-daynav { display: flex; align-items: center; gap: 8px; }
 .m-day {
     flex: 1; min-height: var(--v3-tap); padding: 4px 10px; cursor: pointer;
-    background: rgba(255, 255, 255, 0.75);
-    border: 1px solid rgba(196, 155, 110, 0.3);
-    border-radius: 12px; font-family: inherit; text-align: center;
+    background: rgba(255, 255, 255, 0.13);
+    backdrop-filter: blur(8px) saturate(130%); -webkit-backdrop-filter: blur(8px) saturate(130%);
+    border: 1px solid var(--v3-card-border);
+    border-radius: var(--v3-radius-item); font-family: inherit; text-align: center;
 }
-.m-day-label { display: block; font-size: var(--text-base); font-weight: var(--weight-bold); color: var(--v3-ink); }
-.m-day-sub { display: block; font-size: 11px; color: var(--v3-ink-soft); margin-top: 1px; }
+.m-day-label { display: block; font-size: var(--text-base); font-weight: var(--weight-bold); color: var(--v3-name); }
+.m-day-sub { display: block; font-size: 11px; color: var(--v3-muted); margin-top: 1px; }
 
 .m-reg-head { display: flex; align-items: center; gap: 10px; }
-.m-reg-name { font-size: var(--text-md); font-weight: var(--weight-bold); color: var(--v3-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.m-reg-date { font-size: 11.5px; font-weight: var(--weight-semibold); color: var(--v3-ink-soft); margin-top: 1px; }
+.m-reg-name { font-size: var(--text-md); font-weight: var(--weight-bold); color: var(--v3-name); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.m-reg-date { font-size: 12px; font-weight: var(--weight-semibold); color: var(--v3-muted); margin-top: 1px; }
 
 /* The roster scrolls the page, not a box inside it — a phone has no room for
    nested scroll areas, and the sticky save bar below keeps the action
@@ -745,8 +824,9 @@
     flex-shrink: 0; display: flex; flex-direction: column; align-items: center; gap: 1px;
     min-width: 48px; min-height: var(--v3-tap); padding: 6px 10px; cursor: pointer;
     font-family: inherit; border-radius: 12px;
-    background: rgba(255, 255, 255, 0.7); color: var(--v3-ink);
-    border: 1px solid rgba(196, 155, 110, 0.3);
+    background: rgba(255, 255, 255, 0.13); color: var(--v3-name);
+    backdrop-filter: blur(8px) saturate(130%); -webkit-backdrop-filter: blur(8px) saturate(130%);
+    border: 1px solid var(--v3-card-border);
 }
 .m-daychip[aria-pressed="true"] { background: var(--v3-terracotta); border-color: var(--v3-terracotta); color: #fff; }
 /* Today is worth finding at a glance even when another day is selected. */
@@ -812,27 +892,14 @@
 
 /* ---- the collect form (takes over the whole sheet) ---- */
 
-.m-field { display: flex; flex-direction: column; gap: 6px; }
-.m-field[hidden] { display: none; }
+/* `.m-field` itself is defined once, under FIELDS below. */
 .m-field > span, .m-field-label {
     font-size: 11.5px; font-weight: var(--weight-semibold); color: var(--v3-muted);
     display: block; margin-bottom: 6px;
 }
 .m-field > span { margin-bottom: 0; }
 
-.m-input {
-    width: 100%; min-height: var(--v3-tap); padding: 0 12px;
-    font: inherit; color: var(--v3-name);
-    /* 16px minimum, or iOS Safari zooms the page when the field takes focus. */
-    font-size: var(--text-md);
-    background: rgba(255, 255, 255, 0.1);
-    border: 1px solid var(--v3-card-border);
-    border-radius: var(--v3-radius-item);
-}
-.m-input:focus {
-    outline: none; border-color: var(--v3-terracotta);
-    box-shadow: 0 0 0 3px rgba(180, 91, 52, 0.3);
-}
+/* `.m-input` itself is defined once, further down under FIELDS. */
 /* The amount is the number being checked against cash in hand — make it the
    biggest thing on the screen. */
 .m-input-amount {
@@ -978,9 +1045,23 @@
     backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
 }
 
+/*
+ * UAT ENH-612 / ENH-620 — every dialog is a dialog, at any length.
+ *
+ * The scrim already centred the modal, but `max-height: 100%` with the whole
+ * box scrolling meant a long form (Add Student runs to twenty fields) grew
+ * until it filled the viewport edge to edge — indistinguishable from a
+ * full-screen page, which is what ENH-612 reports.
+ *
+ * Capping the height and scrolling only the BODY keeps the title and the
+ * Cancel/Save pair on screen and always leaves dimmed background visible
+ * around the corners, so a two-field dialog and a twenty-field one are
+ * recognisably the same component.
+ */
 .m-modal {
-    width: 100%; max-width: 560px; max-height: 100%;
-    overflow-y: auto; -webkit-overflow-scrolling: touch;
+    display: flex; flex-direction: column;
+    width: 100%; max-width: 560px; max-height: 88vh;
+    overflow: hidden;
     background: var(--v3-card-bg);
     backdrop-filter: blur(12px) saturate(136%); -webkit-backdrop-filter: blur(12px) saturate(136%);
     border: 1px solid var(--v3-card-border);
@@ -991,6 +1072,7 @@
 @keyframes m-modal-in { from { opacity: 0; transform: translateY(10px) scale(0.98); } to { opacity: 1; transform: none; } }
 
 .m-modal-head {
+    flex-shrink: 0;
     display: flex; align-items: flex-start; justify-content: space-between;
     gap: 12px; padding: 18px 18px 0;
 }
@@ -1003,11 +1085,14 @@
 }
 
 .m-modal-body {
+    flex: 1; min-height: 0;
+    overflow-y: auto; -webkit-overflow-scrolling: touch;
     display: flex; flex-direction: column; gap: 16px;
     padding: 16px 18px 18px;
 }
 
 .m-modal-foot {
+    flex-shrink: 0;
     display: flex; gap: 10px;
     padding: 14px 18px 18px;
     border-top: 1px solid var(--v3-row-border);
@@ -1016,7 +1101,8 @@
     flex: 1; min-height: var(--v3-tap); padding: 0 14px; cursor: pointer;
     display: inline-flex; align-items: center; justify-content: center;
     font-family: inherit; font-size: var(--text-sm); font-weight: var(--weight-semibold);
-    border-radius: 12px;
+    /* Same radius as .m-btn — a dialog's buttons are the app's buttons. */
+    border-radius: var(--v3-radius-item);
 }
 .m-form-cancel {
     background: var(--v3-ghost-bg); color: var(--v3-name);
@@ -1042,6 +1128,7 @@
 .m-field-error { font-size: 12px; font-weight: var(--weight-semibold); color: var(--v3-negative); }
 
 .m-input {
+    box-sizing: border-box;
     width: 100%; min-height: var(--v3-tap); padding: 0 12px;
     font: inherit;
     /* 16px literal, NOT var(--text-base) — that token is 14px in this project.
@@ -1051,11 +1138,55 @@
     color: var(--v3-name);
     background: var(--v3-ghost-bg);
     border: 1px solid var(--v3-card-border);
-    border-radius: 12px;
+    border-radius: var(--v3-radius-item);
 }
 .m-input:focus-visible {
     outline: none; border-color: var(--v3-terracotta);
     box-shadow: 0 0 0 3px rgba(180, 91, 52, 0.3);
+}
+
+/*
+ * DATE AND TIME FIELDS  (UAT BUG-617, BUG-618)
+ *
+ * "Received On is taller and wider than the other inputs" is the browser's
+ * native date widget asserting its own intrinsic size: WebKit sizes
+ * <input type="date"> from its internal spin/segment fields, ignoring the
+ * padding and min-height every other input follows, and lets it grow past
+ * 100% width. Only `appearance: none` puts it back under this stylesheet's
+ * control.
+ *
+ * `height` is fixed rather than left to `min-height` because the native
+ * widget's own line box is taller than the text it holds, and `box-sizing`
+ * keeps the border inside that height so a date field and a text field are
+ * the same measured box, not merely the same declared one.
+ */
+.m-input[type="date"],
+.m-input[type="time"],
+.m-input[type="datetime-local"],
+.m-input[type="month"],
+.m-input[type="week"] {
+    appearance: none; -webkit-appearance: none;
+    box-sizing: border-box;
+    height: var(--v3-tap); min-height: var(--v3-tap);
+    max-width: 100%; padding: 0 12px;
+    line-height: normal;   /* Safari centres the value off `font: inherit` otherwise. */
+}
+/* Safari wraps the value in a flex row that defaults to the left but drifts
+   with the picker icon; pinning it keeps the text on the same baseline as
+   every neighbouring field. */
+.m-input[type="date"]::-webkit-date-and-time-value,
+.m-input[type="time"]::-webkit-date-and-time-value,
+.m-input[type="datetime-local"]::-webkit-date-and-time-value,
+.m-input[type="month"]::-webkit-date-and-time-value,
+.m-input[type="week"]::-webkit-date-and-time-value {
+    text-align: left; margin: 0;
+}
+.m-input[type="date"]::-webkit-calendar-picker-indicator,
+.m-input[type="time"]::-webkit-calendar-picker-indicator,
+.m-input[type="datetime-local"]::-webkit-calendar-picker-indicator,
+.m-input[type="month"]::-webkit-calendar-picker-indicator,
+.m-input[type="week"]::-webkit-calendar-picker-indicator {
+    margin: 0; padding: 0; cursor: pointer;
 }
 .m-textarea { min-height: 76px; padding: 10px 12px; resize: vertical; line-height: var(--leading-normal); }
 .m-field[data-invalid="true"] .m-input { border-color: var(--v3-negative); }
@@ -1125,3 +1256,95 @@
 .m-trend-bar { display: block; height: 6px; border-radius: 3px; min-width: 2px; }
 .m-trend-bar[data-tone="positive"] { background: var(--v3-positive); }
 .m-trend-bar[data-tone="negative"] { background: var(--v3-negative); }
+
+/* ==========================================================================
+   TOAST NOTIFICATIONS  (UAT ENH-614, ENH-615)
+
+   js/ui/toast.js has always been the app's one notification component, but
+   index.html deliberately does not load components.css — which is where its
+   only stylesheet lived. Every toast this app has ever raised therefore
+   rendered as unstyled text at the foot of <body>: no panel, no colour, no
+   icon tint, no animation, and nothing positioning it. "Show a toast after
+   Save" and "standardise toasts across the app" are the same fix — the
+   component was being called correctly all along and had nothing to paint
+   with.
+
+   Styled here, in the mobile design language, so every call site — save,
+   update, delete, record payment, validation, network error — gets the same
+   card without changing a line of calling code.
+   ========================================================================== */
+
+.toast-region {
+    position: fixed; z-index: var(--z-toast);
+    /* Below the app bar, not over it: the bar carries the module title and the
+       account button, and a toast that covers them hides where you are. */
+    top: calc(var(--v3-safe-top) + 56px);
+    left: var(--space-4); right: var(--space-4);
+    display: flex; flex-direction: column; gap: 8px;
+    /* The region never swallows a tap — only the cards themselves do, so a
+       toast cannot block the screen underneath it. */
+    pointer-events: none;
+}
+
+.toast {
+    display: flex; align-items: flex-start; gap: 10px;
+    padding: 12px 14px;
+    pointer-events: auto;
+    background: linear-gradient(180deg, rgba(48, 26, 16, 0.97), rgba(28, 15, 8, 0.97));
+    backdrop-filter: var(--v3-glass-blur); -webkit-backdrop-filter: var(--v3-glass-blur);
+    border: 1px solid var(--v3-card-border);
+    border-left: 3px solid var(--v3-tone-neutral);
+    border-radius: var(--v3-radius-card);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+    animation: m-toast-in var(--duration-normal) var(--ease-entrance);
+}
+.toast[data-leaving="true"] {
+    animation: m-toast-out var(--duration-fast) var(--ease-exit) forwards;
+}
+
+/* Slides down from the top, as specified — and back up on the way out. */
+@keyframes m-toast-in  { from { opacity: 0; transform: translateY(-16px); } to { opacity: 1; transform: none; } }
+@keyframes m-toast-out { to { opacity: 0; transform: translateY(-12px); } }
+
+.toast-success { border-left-color: var(--v3-positive); }
+.toast-error   { border-left-color: var(--v3-negative); }
+.toast-warning { border-left-color: var(--v3-caution); }
+.toast-info    { border-left-color: var(--v3-terracotta); }
+
+.toast-icon { flex-shrink: 0; width: 17px; height: 17px; margin-top: 1px; }
+.toast-success .toast-icon { color: var(--v3-positive); }
+.toast-error   .toast-icon { color: var(--v3-negative); }
+.toast-warning .toast-icon { color: var(--v3-caution); }
+.toast-info    .toast-icon { color: var(--v3-terracotta); }
+
+.toast-content { flex: 1; min-width: 0; }
+.toast-title {
+    font-size: var(--text-sm); font-weight: var(--weight-semibold);
+    color: var(--v3-name); line-height: var(--leading-snug);
+}
+.toast-message {
+    margin-top: 2px; font-size: var(--text-xs); color: var(--v3-muted);
+    line-height: var(--leading-snug);
+}
+.toast-repeat { color: var(--v3-muted); font-weight: var(--weight-medium); }
+
+/* toast.js builds its buttons with the v2 `btn` classes, which this app does
+   not load. Styled by position rather than renamed, so the shared component
+   stays shared. */
+.toast-action {
+    margin-top: 8px; min-height: 34px; padding: 0 12px; cursor: pointer;
+    font-family: inherit; font-size: var(--text-xs); font-weight: var(--weight-semibold);
+    background: var(--v3-ghost-bg); color: var(--v3-name);
+    border: 1px solid var(--v3-card-border); border-radius: var(--v3-radius-item);
+}
+.toast > button:last-child {
+    flex-shrink: 0; width: 28px; height: 28px; padding: 0; cursor: pointer;
+    display: grid; place-items: center;
+    background: none; border: none; color: var(--v3-muted);
+    border-radius: var(--v3-radius-pill);
+}
+.toast > button:last-child:hover { background: var(--v3-ghost-bg); color: var(--v3-name); }
+
+@media (prefers-reduced-motion: reduce) {
+    .toast, .toast[data-leaving="true"] { animation: none; }
+}

@@ -119,9 +119,9 @@ export default class MobileFinancePage extends Page {
                     ${formatMoney(pl.net)}
                 </div>
                 <div class="m-metrics" style="margin-top:12px;">
-                    ${metric('In', formatMoneyShort(pl.totalIncome))}
-                    ${metric('Out', formatMoneyShort(pl.totalExpense))}
-                    ${metric('Margin', pl.margin === null ? '—' : `${pl.margin}%`)}
+                    ${metric('In', formatMoneyShort(pl.totalIncome), 'in')}
+                    ${metric('Out', formatMoneyShort(pl.totalExpense), 'out')}
+                    ${metric('Margin', pl.margin === null ? '—' : `${pl.margin}%`, 'margin')}
                 </div>
             </section>
 
@@ -271,6 +271,9 @@ export default class MobileFinancePage extends Page {
 
 /* ------------------------------------------------------------------ HELPERS */
 
-function metric(label, value) {
-    return html`<div class="m-metric"><span class="m-metric-value">${value}</span><span class="m-metric-label">${label}</span></div>`;
+function metric(label, value, tone = null) {
+    return html`<div class="m-metric"${tone ? raw(` data-tone="${tone}"`) : ''}>
+        <span class="m-metric-value">${value}</span>
+        <span class="m-metric-label">${label}</span>
+    </div>`;
 }

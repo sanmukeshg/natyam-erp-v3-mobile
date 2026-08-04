@@ -12,11 +12,16 @@
  * `batchDetail()` already returns and the order that answers the question
  * being asked.
  *
- * Creating, editing, closing and reopening batches are **not** here. They need
- * a form plus a conflict-override decision, and a phone is the wrong place to
- * make one; the desktop app owns that. This screen deliberately offers no
- * disabled buttons for them either — an action a phone user should not be
- * starting is better absent than greyed out.
+ * EDITING (UAT BUG-601). An owner standing in the studio does need to fix a
+ * room, a time or a teacher without walking to a desktop, so the sheet carries
+ * an Edit action. It uses the same field list, the same service call and the
+ * same clash-override confirmation the desktop app does — a phone is a smaller
+ * screen, not a laxer one.
+ *
+ * Creating, closing and reopening batches are still desktop-only: closing asks
+ * where the enrolled students go, which is not a decision to make between
+ * sessions. This screen offers no disabled buttons for them — an action a phone
+ * user should not be starting is better absent than greyed out.
  */
 
 import { Page } from '../../core/router.js';
@@ -25,7 +30,12 @@ import { icon } from '../../ui/icons.js';
 import { toast } from '../../ui/toast.js';
 import { session } from '../../core/session.js';
 import { EVENTS } from '../../core/bus.js';
-import { listBatches, batchDetail } from '../../services/batches.service.js';
+import { listBatches, batchDetail, updateBatch, WEEK } from '../../services/batches.service.js';
+import { availableTeachers } from '../../services/staff.service.js';
+import { listBranches } from '../../services/settings.service.js';
+import { curriculum, levelsOf, CAPABILITIES } from '../../config/app.config.js';
+import { formModal, confirmModal } from '../../ui/form.js';
+import { localDate } from '../../utils/date.js';
 
 const FILTERS = [
     { key: null, label: 'All' },
@@ -194,6 +204,14 @@ export default class MobileBatchesPage extends Page {
                         ${fact('Room', batch.room || '—')}
                     </dl>
 
+                    ${session.can(CAPABILITIES.STUDENT_EDIT) ? html`
+                        <div class="m-actions">
+                            <button class="m-btn" data-action="edit-batch">
+                                ${raw(icon('edit', { size: 15 }))} Edit batch
+                            </button>
+                        </div>
+                    ` : ''}
+
                     <p class="m-section-label" style="margin:6px 0 0;color:var(--v3-muted);text-shadow:none;">
                         Roster — weakest attendance first
                     </p>
@@ -213,6 +231,104 @@ export default class MobileBatchesPage extends Page {
         `);
     }
 
+    /* ----------------------------------------------------------------- EDIT */
+
+    /**
+     * The batch form's fields, seeded from the batch being edited.
+     *
+     * Teachers come from availableTeachers() rather than a plain staff list so
+     * a fully-booked teacher is *shown* as busy instead of being offered and
+     * then rejected by the clash check a moment later. `excludeBatchId` stops
+     * the batch clashing with itself.
+     */
+    async batchFields(existing) {
+        const [teachers, branches] = await Promise.all([
+            availableTeachers({ branchId: session.branch(), excludeBatchId: existing.id }),
+            listBranches()
+        ]);
+
+        return [
+            { name: 'name', label: 'Batch name', required: true },
+            { name: 'code', label: 'Code', required: true, maxLength: 20,
+              help: 'Short label used on registers and reports.' },
+            { name: 'branchId', label: 'Branch', type: 'select', required: true,
+              options: branches.map((b) => ({ value: b.id, label: b.name })) },
+            { name: 'levels', label: 'Levels', type: 'checks', required: true, itemNoun: 'level',
+              options: curriculum().map((l) => ({ value: l.value, label: l.label })),
+              help: 'Students at any of these levels can be placed here.' },
+            { name: 'teacherId', label: 'Teacher', type: 'select', placeholder: 'Not assigned yet',
+              options: teachers.map((t) => ({
+                  value: t.id,
+                  label: t.available
+                      ? `${t.name} — ${t.load} batch${t.load === 1 ? '' : 'es'}`
+                      : `${t.name} — busy (${t.clashWith})`
+              })) },
+            { name: 'days', label: 'Days', type: 'checks', required: true, itemNoun: 'day',
+              options: WEEK.map((d) => ({ value: d, label: d })),
+              help: 'The register only exists on these days.' },
+            { name: 'startTime', label: 'Starts', type: 'time', required: true },
+            { name: 'endTime', label: 'Ends', type: 'time', required: true,
+              validate: (v, all) => (all.startTime && v <= all.startTime)
+                  ? 'The batch cannot end before it starts.' : null },
+            { name: 'room', label: 'Room or hall' },
+            { name: 'capacity', label: 'Capacity', type: 'number', min: 0, max: 200,
+              help: 'Leave blank for no limit.' },
+            { name: 'startsOn', label: 'Running since', type: 'date' },
+            { name: 'notes', label: 'Notes', type: 'textarea', rows: 2 }
+        ].map((f) => ({
+            ...f,
+            value: f.name === 'levels'   ? levelsOf(existing)
+                 : f.name === 'startsOn' ? (existing.startsOn || localDate())
+                 : existing[f.name]
+        }));
+    }
+
+    /**
+     * `updateBatch()` refuses a clashing slot unless told otherwise. A clash is
+     * a question for a person, not an error to swallow, so it is put to them —
+     * the same wording and the same second attempt the desktop app makes.
+     */
+    async saveWithConflictCheck(attempt) {
+        try {
+            return await attempt(false);
+        } catch (err) {
+            if (!err.conflicts?.length) throw err;
+
+            const proceed = await confirmModal({
+                title: 'This clashes with another batch',
+                message: err.conflicts.map((c) => c.message).join(' '),
+                confirmLabel: 'Schedule it anyway',
+                tone: 'negative'
+            });
+
+            if (!proceed) throw err;
+            return attempt(true);
+        }
+    }
+
+    async editBatch() {
+        const batch = this.detail?.batch;
+        if (!batch) return;
+        session.require(CAPABILITIES.STUDENT_EDIT, 'edit a batch');
+
+        const fields = await this.batchFields(batch);
+
+        const saved = await formModal({
+            title: `Edit ${batch.name}`,
+            submitLabel: 'Save changes',
+            fields,
+            values: Object.fromEntries(fields.map((f) =>
+                [f.name, f.value ?? (f.type === 'checks' ? [] : '')])),
+            onSubmit: (values) => this.saveWithConflictCheck(
+                (allowConflicts) => updateBatch(batch.id, values, { allowConflicts }))
+        });
+
+        if (!saved) return;
+        toast.success('Batch updated', batch.name);
+        await this.open(batch.id);
+        await this.load();
+    }
+
     bind() {
         const root = this.container;
 
@@ -229,6 +345,7 @@ export default class MobileBatchesPage extends Page {
 
         this.onDispose(on(root, 'click', '[data-action="open"]', (_e, t) => this.open(t.dataset.id)));
         this.onDispose(on(root, 'click', '[data-action="close-detail"]', () => this.close()));
+        this.onDispose(on(root, 'click', '[data-action="edit-batch"]', () => this.editBatch()));
         this.onDispose(on(root, 'click', '.m-profile', (event) => event.stopPropagation()));
 
         this.onKey = (event) => { if (event.key === 'Escape' && this.detail) this.close(); };
@@ -245,8 +362,11 @@ function seatTone(b) {
     return 'open';
 }
 
-function metric(label, value) {
-    return html`<div class="m-metric"><div class="m-metric-label">${label}</div><div class="m-metric-value">${value}</div></div>`;
+function metric(label, value, tone = null) {
+    return html`<div class="m-metric"${tone ? raw(` data-tone="${tone}"`) : ''}>
+        <span class="m-metric-value">${value}</span>
+        <span class="m-metric-label">${label}</span>
+    </div>`;
 }
 
 function fact(label, value) {

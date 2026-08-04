@@ -283,8 +283,11 @@ export default class MobileStaffPage extends Page {
 
 /* ------------------------------------------------------------------ HELPERS */
 
-function metric(label, value) {
-    return html`<div class="m-metric"><span class="m-metric-value">${value}</span><span class="m-metric-label">${label}</span></div>`;
+function metric(label, value, tone = null) {
+    return html`<div class="m-metric"${tone ? raw(` data-tone="${tone}"`) : ''}>
+        <span class="m-metric-value">${value}</span>
+        <span class="m-metric-label">${label}</span>
+    </div>`;
 }
 
 function fact(label, value) {

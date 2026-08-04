@@ -45,9 +45,6 @@ export class MobileShell {
         render(this.root, html`
             <div class="m-shell" data-role="shell">
                 <header class="m-appbar">
-                    <span class="m-appbar-mark" aria-hidden="true">
-                        <img src="assets/icons/icon.svg" alt="">
-                    </span>
                     <span class="m-appbar-text">
                         <span class="m-appbar-title" data-role="title"></span>
                         <span class="m-appbar-sub" data-role="subtitle"></span>

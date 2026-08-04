@@ -27,11 +27,17 @@ import { session } from '../../core/session.js';
 import { EVENTS } from '../../core/bus.js';
 import { formatMoney, formatMoneyShort } from '../../utils/money.js';
 import { formatDateLong } from '../../utils/date.js';
-import { listStudents, listFilters, profile, enrol } from '../../services/students.service.js';
+import {
+    listStudents, listFilters, profile, enrol,
+    updateStudent, assignToBatch, promote, setStatus
+} from '../../services/students.service.js';
+import { TEMPLATES, checkEligibility, issue } from '../../services/certificates.service.js';
+import { listPrograms, PROGRAM_STATUS } from '../../services/programs.service.js';
 import { listBatches } from '../../services/batches.service.js';
 import { listBranches, listFeePlans } from '../../services/settings.service.js';
-import { curriculum, CAPABILITIES } from '../../config/app.config.js';
-import { formModal } from '../../ui/form.js';
+import { curriculum, CAPABILITIES, STUDENT_STATUS } from '../../config/app.config.js';
+import { formModal, confirmModal } from '../../ui/form.js';
+import { router } from '../../core/router.js';
 import { localDate } from '../../utils/date.js';
 
 const QUICK_FILTERS = [
@@ -221,6 +227,8 @@ export default class MobileStudentsPage extends Page {
                             ${fact('Status', statusLabel(student.status))}
                             ${fact('Joined', student.joinedOn ? formatDateLong(student.joinedOn) : '—')}
                         </dl>
+
+                        ${this.actionRow()}
                     ` : ''}
 
                     ${this.profileTab === 'Fees' ? html`
@@ -307,6 +315,9 @@ export default class MobileStudentsPage extends Page {
         }));
 
         this.onDispose(on(root, 'click', '[data-action="add"]', () => this.newStudent()));
+        this.onDispose(on(root, 'click', '[data-action="op"]', (_e, target) => {
+            this.operation(target.dataset.op);
+        }));
 
         this.onKey = (event) => { if (event.key === 'Escape' && this.profile) this.closeProfile(); };
         window.addEventListener('keydown', this.onKey);
@@ -325,14 +336,22 @@ export default class MobileStudentsPage extends Page {
      * sheet with its actions in the header, because the keyboard covers the
      * bottom of a phone screen the whole time a field has focus.
      */
-    async newStudent() {
-        session.require(CAPABILITIES.STUDENT_EDIT, 'add a student');
-
+    /**
+     * The student form's fields, shared by enrolment and editing (UAT BUG-602).
+     *
+     * `existing` seeds them for an edit and drops the fee plan: choosing one
+     * *raises a schedule*, which is an enrolment act, not an edit — changing an
+     * existing student's billing is done on the Fees screen where the invoices
+     * it would touch are visible.
+     */
+    async studentFields(existing = null) {
         const [batches, plans, branches] = await Promise.all([
             listBatches(session.branch()), listFeePlans(), listBranches()
         ]);
         const open = batches.filter((b) => b.status !== 'closed');
-        const defaultBranchId = session.branch() || (branches.length === 1 ? branches[0].id : '');
+        const defaultBranchId = existing?.branchId
+            || session.branch()
+            || (branches.length === 1 ? branches[0].id : '');
 
         const fields = [
             { type: 'divider', label: 'Student' },
@@ -356,9 +375,11 @@ export default class MobileStudentsPage extends Page {
                        + (b.capacity && b.enrolled >= b.capacity ? ' (full)' : '')
               })),
               help: 'A student with no batch appears on no register.' },
-            { name: 'feePlanId', label: 'Fee plan', type: 'select', placeholder: 'No plan',
-              options: plans.map((p) => ({ value: p.id, label: `${p.name} — ${formatMoney(p.amount)}` })),
-              help: 'Choosing one raises the fee schedule immediately.' },
+            ...(existing ? [] : [
+                { name: 'feePlanId', label: 'Fee plan', type: 'select', placeholder: 'No plan',
+                  options: plans.map((p) => ({ value: p.id, label: `${p.name} — ${formatMoney(p.amount)}` })),
+                  help: 'Choosing one raises the fee schedule immediately.' }
+            ]),
             { name: 'joinedOn', label: 'Joined on', type: 'date' },
 
             { type: 'divider', label: 'Guardian' },
@@ -376,17 +397,39 @@ export default class MobileStudentsPage extends Page {
             { name: 'notes', label: 'Other notes', type: 'textarea', rows: 2 }
         ];
 
+        // The guardian's own fields live on the guardian record, so an edit
+        // reads them back off the profile rather than off the student.
+        const guardian = existing ? (this.profile?.guardian || {}) : {};
+
+        return fields.map((f) => (f.type === 'divider' ? f : {
+            ...f,
+            value: f.name === 'branchId' ? defaultBranchId
+                 : f.name === 'joinedOn' ? (existing?.joinedOn || localDate())
+                 : f.name === 'guardianRelation' ? (guardian.relation || 'Mother')
+                 : f.name === 'guardianName' ? (guardian.name || '')
+                 : f.name === 'guardianPhone' ? (guardian.phone || '')
+                 : f.name === 'guardianEmail' ? (guardian.email || '')
+                 : (existing?.[f.name] ?? '')
+        }));
+    }
+
+    /** Turns the field list into the `values` map formModal seeds itself from. */
+    static seed(fields) {
+        return Object.fromEntries(fields
+            .filter((f) => f.type !== 'divider')
+            .map((f) => [f.name, f.value ?? '']));
+    }
+
+    async newStudent() {
+        session.require(CAPABILITIES.STUDENT_EDIT, 'add a student');
+        const fields = await this.studentFields();
+
         const result = await formModal({
             title: 'Add a student',
             description: 'Enrols directly, without an application.',
             submitLabel: 'Enrol',
             fields,
-            values: {
-                ...Object.fromEntries(fields.filter((f) => f.type !== 'divider').map((f) => [f.name, ''])),
-                branchId: defaultBranchId,
-                guardianRelation: 'Mother',
-                joinedOn: localDate()
-            },
+            values: MobileStudentsPage.seed(fields),
             onSubmit: (values) => enrol(values)
         });
 
@@ -398,12 +441,303 @@ export default class MobileStudentsPage extends Page {
         await this.load();
         this.openProfile(result.student.id);
     }
+
+    /* ------------------------------------------------------------ OPERATIONS */
+    /*
+     * UAT BUG-602. Opening a student showed the record but offered nothing to
+     * do with it — every management action was desktop-only. These are the same
+     * six a desktop user has, driven through the same services, so the rules
+     * (a full batch is refused, a leaver must have a reason recorded, a
+     * certificate's eligibility is checked) are identical on both surfaces.
+     *
+     * Collect Fee hands off to the Fees screen rather than re-implementing the
+     * ledger: which invoice a payment settles is the decision being made, and
+     * that screen already presents it.
+     */
+
+    actionRow() {
+        const student = this.profile?.student;
+        if (!student) return '';
+
+        const may = {
+            edit: session.can(CAPABILITIES.STUDENT_EDIT),
+            fee: session.can(CAPABILITIES.FEE_COLLECT),
+            cert: session.can(CAPABILITIES.CERTIFICATE_ISSUE)
+        };
+        if (!may.edit && !may.fee && !may.cert) return '';
+
+        const action = (op, iconName, label) => html`
+            <button class="m-btn m-btn-ghost" data-action="op" data-op="${op}">
+                ${raw(icon(iconName, { size: 15 }))} ${label}
+            </button>
+        `;
+
+        return html`
+            <p class="m-section-label" style="margin:4px 0 0;">Actions</p>
+            <div class="m-actions">
+                ${may.edit ? action('edit', 'edit', 'Edit student') : ''}
+                ${may.edit ? action('move-batch', 'grid', 'Move batch') : ''}
+                ${may.edit ? action('promote', 'star', 'Promote') : ''}
+                ${may.edit ? action('set-status', 'user', 'Change status') : ''}
+                ${may.fee ? action('collect-fee', 'receipt', 'Collect fee') : ''}
+                ${may.cert ? action('issue-certificate', 'award', 'Issue certificate') : ''}
+            </div>
+        `;
+    }
+
+    operation(key) {
+        if (key === 'edit') return this.editStudent();
+        if (key === 'move-batch') return this.moveBatch();
+        if (key === 'promote') return this.promoteStudent();
+        if (key === 'set-status') return this.changeStatus();
+        if (key === 'collect-fee') return this.collectFee();
+        if (key === 'issue-certificate') return this.issueCertificate();
+    }
+
+    /** Refreshes the open profile and the list behind it after any write. */
+    async refreshAfterOperation(studentId) {
+        this.profile = await profile(studentId);
+        this.paintProfile();
+        await this.load();
+    }
+
+    async editStudent() {
+        const student = this.profile?.student;
+        if (!student) return;
+        const fields = await this.studentFields(student);
+
+        const saved = await formModal({
+            title: `Edit ${student.name}`,
+            submitLabel: 'Save changes',
+            fields,
+            values: MobileStudentsPage.seed(fields),
+            onSubmit: (values) => updateStudent(student.id, values)
+        });
+
+        if (!saved) return;
+        toast.success('Student updated', student.name);
+        await this.refreshAfterOperation(student.id);
+    }
+
+    async moveBatch() {
+        const student = this.profile?.student;
+        if (!student) return;
+
+        const batches = (await listBatches(session.branch())).filter((b) => b.status !== 'closed');
+
+        const moved = await formModal({
+            title: `Move ${student.name}`,
+            description: 'A student with no batch appears on no register.',
+            submitLabel: 'Move',
+            fields: [
+                { name: 'batchId', label: 'Batch', type: 'select', placeholder: 'Take them off every batch',
+                  options: batches.map((b) => ({
+                      value: b.id,
+                      label: `${b.name} — ${b.enrolled}/${b.capacity || '∞'}`
+                           + (b.capacity && b.enrolled >= b.capacity ? ' (full)' : '')
+                  })),
+                  help: 'The service refuses a batch that is already full.' }
+            ],
+            values: { batchId: student.batchId || '' },
+            // assignToBatch() treats a null batch as "take them off every
+            // batch", which is the placeholder above — so an empty value is a
+            // real choice, not a missing one, and the field is not required.
+            onSubmit: (v) => assignToBatch(student.id, v.batchId || null)
+        });
+
+        if (!moved) return;
+        toast.success('Batch updated', student.name);
+        await this.refreshAfterOperation(student.id);
+    }
+
+    /**
+     * Moves a student up one level. `promote()` also clears their batch —
+     * someone who has moved up is no longer in the right class — and the dialog
+     * says so, because otherwise they quietly vanish off a register overnight.
+     */
+    async promoteStudent() {
+        const student = this.profile?.student;
+        if (!student) return;
+
+        const ladder = curriculum();
+        const index = ladder.findIndex((l) => l.value === student.level);
+        const next = index >= 0 ? ladder[index + 1] : null;
+
+        // The service throws for both of these. Checking first turns a rejected
+        // submit into a dialog that never opens with a pointless form in it.
+        if (!next) {
+            toast.error(
+                index === -1 ? 'Unrecognised level' : 'Already at the final level',
+                index === -1
+                    ? `${student.name} is at a level that is no longer in the curriculum.`
+                    : `${student.name} has completed ${ladder[index].label}. Issue a diploma instead.`);
+            return;
+        }
+
+        const done = await formModal({
+            title: `Promote ${student.name}`,
+            description: `${ladder[index].label} → ${next.label}. This also takes them off `
+                       + `${student.batchId ? 'their current batch' : 'any batch'}, so they can be `
+                       + 'placed in one that teaches the new level.',
+            submitLabel: 'Promote',
+            fields: [
+                { name: 'note', label: 'Note', type: 'textarea', rows: 2,
+                  help: 'Optional. Kept on the record as the reason for the promotion.' }
+            ],
+            values: { note: '' },
+            onSubmit: (v) => promote(student.id, { note: v.note })
+        });
+
+        if (!done) return;
+        toast.success('Promoted', `${student.name} is now at ${done.to.label}.`);
+        await this.refreshAfterOperation(student.id);
+    }
+
+    /**
+     * Leaving (Inactive or Graduated) requires a reason — the service insists,
+     * because it is the only history of why — and also clears their batch.
+     * `setStatus()` reports any outstanding balance back rather than cancelling
+     * it: whether a leaver still owes money is a decision for a person, so the
+     * figure is surfaced instead of swallowed.
+     */
+    async changeStatus() {
+        const student = this.profile?.student;
+        if (!student) return;
+
+        const leaving = (st) => st === STUDENT_STATUS.INACTIVE || st === STUDENT_STATUS.GRADUATED;
+
+        const result = await formModal({
+            title: `${student.name}'s status`,
+            description: `Currently ${statusLabel(student.status)}.`,
+            submitLabel: 'Save status',
+            fields: [
+                { name: 'status', label: 'Status', type: 'select', required: true,
+                  options: Object.values(STUDENT_STATUS)
+                      .map((st) => ({ value: st, label: statusLabel(st) })) },
+                { name: 'reason', label: 'Why', type: 'textarea', rows: 2,
+                  showIf: (v) => leaving(v.status),
+                  help: 'Required when someone leaves — it is the only record of why. '
+                      + 'They also come off their batch.' }
+            ],
+            values: { status: student.status || STUDENT_STATUS.ACTIVE, reason: '' },
+            validateAll: (v) => (leaving(v.status) && !String(v.reason || '').trim())
+                ? { reason: 'Record why the student is leaving.' } : null,
+            onSubmit: (v) => setStatus(student.id, v.status, { reason: v.reason })
+        });
+
+        if (!result) return;
+        toast.success('Status updated', statusLabel(result.student.status));
+        if (result.outstanding > 0) {
+            toast.info(
+                `${formatMoney(result.outstanding)} still outstanding`,
+                'Their invoices were left alone — settle or waive them on the Fees screen.');
+        }
+        await this.refreshAfterOperation(student.id);
+    }
+
+    /**
+     * Hands off to the Fees screen with this student already open.
+     *
+     * Collecting a payment means choosing which invoice it settles, and that
+     * ledger — with each invoice's balance, age and due date — already exists
+     * there. Rebuilding it inside this sheet would be a second copy of the same
+     * screen that could drift from the first.
+     */
+    collectFee() {
+        const student = this.profile?.student;
+        if (!student) return;
+        this.closeProfile();
+        router.go(`/fees?student=${encodeURIComponent(student.id)}`);
+    }
+
+    /**
+     * Issuing a certificate.
+     *
+     * Eligibility is asked of the service, never guessed here. When it refuses,
+     * the refusal is shown and an override is offered — but the reason is then
+     * required and stored on the certificate itself, where every future
+     * verification will show it.
+     */
+    async issueCertificate() {
+        const student = this.profile?.student;
+        if (!student) return;
+        session.require(CAPABILITIES.CERTIFICATE_ISSUE, 'issue a certificate');
+
+        const programs = await listPrograms(session.branch(), { status: PROGRAM_STATUS.COMPLETED })
+            .catch(() => []);
+
+        const issued = await formModal({
+            title: `Certificate for ${student.name}`,
+            description: 'The serial is allocated when it is issued and never reused.',
+            submitLabel: 'Check and issue',
+            fields: [
+                { name: 'templateId', label: 'Kind', type: 'select', required: true,
+                  placeholder: 'Choose a kind',
+                  options: TEMPLATES.map((t) => ({ value: t.id, label: t.name })) },
+                // Only the participation template needs a programme, and only
+                // completed programmes can be certified against.
+                { name: 'programId', label: 'Programme', type: 'select',
+                  placeholder: programs.length ? 'Choose a programme' : 'No completed programme yet',
+                  options: programs.map((pr) => ({
+                      value: pr.id, label: `${pr.name} — ${formatDateLong(pr.date)}`
+                  })),
+                  showIf: (v) => v.templateId === 'participation',
+                  help: 'A participation certificate is issued against a completed programme.' },
+                { name: 'citation', label: 'Citation', type: 'textarea', rows: 2,
+                  showIf: (v) => v.templateId === 'merit',
+                  help: 'What is being recognised. It is printed on the certificate.' },
+                { name: 'issuedOn', label: 'Issued on', type: 'date' }
+            ],
+            values: { templateId: '', programId: '', citation: '', issuedOn: localDate() },
+            onSubmit: async (v) => {
+                const payload = {
+                    studentId: student.id,
+                    templateId: v.templateId,
+                    programId: v.programId || null,
+                    citation: v.citation || null
+                };
+
+                const check = await checkEligibility(payload);
+                if (check.ok) return issue({ ...payload, issuedOn: v.issuedOn || null });
+
+                const reasons = check.reasons.join(' ');
+                const proceed = await confirmModal({
+                    title: 'This does not meet the rules',
+                    message: `${reasons} A certificate can still be issued, but the override is `
+                           + 'recorded on it permanently and shows on every verification.',
+                    confirmLabel: 'Issue on override',
+                    tone: 'negative'
+                });
+                if (!proceed) throw new Error(reasons);
+
+                const overrideReason = await formModal({
+                    title: 'Why is this being overridden?',
+                    description: 'Stored on the certificate itself, not just in a log.',
+                    submitLabel: 'Issue',
+                    fields: [{ name: 'overrideReason', label: 'Reason', required: true }],
+                    values: { overrideReason: '' },
+                    onSubmit: (r) => r.overrideReason
+                });
+                if (!overrideReason) throw new Error('Not issued. Nothing has changed.');
+
+                return issue({ ...payload, issuedOn: v.issuedOn || null,
+                               force: true, overrideReason });
+            }
+        });
+
+        if (!issued) return;
+        toast.success('Certificate issued', issued.serial);
+        await this.refreshAfterOperation(student.id);
+    }
 }
 
 /* ------------------------------------------------------------------ HELPERS */
 
-function metric(label, value) {
-    return html`<div class="m-metric"><div class="m-metric-label">${label}</div><div class="m-metric-value">${value}</div></div>`;
+function metric(label, value, tone = null) {
+    return html`<div class="m-metric"${tone ? raw(` data-tone="${tone}"`) : ''}>
+        <span class="m-metric-value">${value}</span>
+        <span class="m-metric-label">${label}</span>
+    </div>`;
 }
 
 function fact(label, value) {

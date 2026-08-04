@@ -20,7 +20,17 @@ const ICONS = {
     info:    'info'
 };
 
-const DEFAULT_DURATION = { success: 4000, info: 5000, warning: 7000, error: 0 };
+/*
+ * UAT ENH-614 asks for a 2-3 second dismissal, which is right for the routine
+ * confirmations it describes ("Attendance saved successfully") — long enough to
+ * read, short enough not to sit over the register.
+ *
+ * Errors keep duration 0 (stay until dismissed) deliberately. A failed save or
+ * a refused payment must still be on screen when somebody looks back at the
+ * phone they had put down; auto-dismissing it is how a failure gets mistaken
+ * for a success. They are dismissible by tap, so they never block anything.
+ */
+const DEFAULT_DURATION = { success: 3000, info: 3000, warning: 5000, error: 0 };
 
 class ToastManager {
     constructor() {

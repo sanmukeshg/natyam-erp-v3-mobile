@@ -13,6 +13,69 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versioning is
 
 ---
 
+## [3.1.0] — unreleased
+
+First UAT round. Every item in `Bugs and Enhancements v3 mobile.docx`, which was the sole
+source of truth for this round — no undocumented changes.
+
+### Added
+
+- **Batch editing** (BUG-601). An owner standing in the studio can now fix a room, a time or
+  a teacher without walking to a desktop. Same field list, same service call and same
+  clash-override confirmation the desktop app makes — a phone is a smaller screen, not a
+  laxer one. Creating and closing batches stay desktop-only: closing asks where the enrolled
+  students go.
+- **Student management actions** (BUG-602). Opening a student showed the record but offered
+  nothing to do with it. Six actions now: Edit student, Move batch, Promote, Change status,
+  Collect fee, Issue certificate — driven through the same services as desktop, so the rules
+  (a full batch is refused, a leaver must have a reason recorded, a certificate's eligibility
+  is checked) are identical on both surfaces. Collect fee hands off to the Fees screen with
+  that student's ledger open, rather than rebuilding the invoice list inside the sheet.
+
+### Fixed
+
+- **Toasts were completely unstyled** (ENH-614, ENH-615). `js/ui/toast.js` has always been
+  the one shared notification component, but its only stylesheet lived in
+  `components.css` — which this app deliberately does not load. Every toast the app has
+  ever raised rendered as unstyled text at the foot of `<body>`. Styled in the mobile design
+  language: slides from the top, tinted icon, auto-dismisses, never blocks interaction. No
+  call site changed. Errors stay until dismissed, deliberately — a failed save that vanishes
+  after three seconds is how a failure gets mistaken for a success.
+- **Sign-in controls fell back to browser defaults** (ENH-611). `auth.css` reuses
+  `.btn` / `.switch` "for semantics" on the assumption that `components.css` supplies
+  the bases — it does not here. Hence the stock border on the sign-in button, the off-centre
+  Google mark, and a checkbox where the markup already asked for a toggle. The bases are now
+  defined in this app's own auth stylesheet: Google is a white pill, the sign-in button
+  matches the inputs' radius, Remember me is a real switch.
+- **Dialogs read as full-screen pages** (ENH-612, ENH-613, ENH-620). `max-height: 100%`
+  with the whole box scrolling meant a twenty-field form grew until it filled the viewport.
+  Capped at 88vh with fixed chrome and a scrolling body, so a two-field dialog and a
+  twenty-field one are recognisably the same component. Fee collection moved from a bottom
+  sheet into that same family.
+- **Opening a form opened the keyboard** (ENH-616). The first field was auto-focused on every
+  modal, shoving the form up the screen before it could be read. The dialog takes focus
+  instead — Escape, screen readers and tab order still work, the keyboard does not appear.
+  Amount stays pre-filled.
+- **Date fields were taller and wider than their neighbours** (BUG-617, BUG-618). The native
+  date widget asserts its own intrinsic size, ignoring the padding and height every other
+  input follows. `appearance: none` plus a fixed height and `box-sizing` puts it back
+  under this stylesheet's control, across date, time, datetime-local, month and week.
+- **The scrollbar started at the header** (BUG-604). The subhead stuck at `top: -14px`, so
+  it travelled before pinning. It is now fixed at `top: 0` and the list scrolls beneath it.
+- **KPI value and label ran together** as "₹1.14LIn" (ENH-610). They were two *inline* spans;
+  `margin-top` on an inline element does nothing. Stacked properly, with semantic tones —
+  money in green, money out red, margin the brand terracotta — and the cards no longer touch
+  (BUG-603).
+- **Header took too much vertical space** (ENH-619). Reduced from ~76px to ~50px: the logo
+  mark is gone, the search and avatar are smaller, and the avatar keeps a 44px tap target via
+  a pseudo-element. The bar now sits directly on the app background with no panel of its own,
+  and the sticky search row paints the shell's own backdrop so there is no visible seam.
+- **The app disagreed with itself about what a control looks like** (ENH-621). `.m-input`,
+  `.m-field` and the fee badges were each declared twice with different radii, alphas and
+  backgrounds; five copies of the KPI helper rendered in two different orders. Deduplicated
+  and unified, and the header's controls now share one glass treatment instead of being
+  light-on-white left over from a background that no longer exists.
+
 ## [3.0.0] — unreleased
 
 The mobile half of the v3 split. **Not yet feature-complete** — see

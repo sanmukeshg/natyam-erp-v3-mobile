@@ -230,7 +230,7 @@ export function formModal({
                     backdrop cancels.
                 -->
                 <div class="m-modal-scrim" data-role="scrim">
-                    <div class="m-modal" role="dialog" aria-modal="true" aria-label="${title}">
+                    <div class="m-modal" role="dialog" aria-modal="true" aria-label="${title}" tabindex="-1">
                         <div class="m-modal-head">
                             <div>
                                 <h2 class="m-modal-title">${title}</h2>
@@ -359,7 +359,17 @@ export function formModal({
             }
         });
 
-        host.querySelector('input, select, textarea')?.focus();
+        /*
+         * The DIALOG takes focus, not the first field (UAT ENH-616).
+         *
+         * Focusing an input on a phone opens the keyboard the instant the
+         * dialog appears, which shoves the form up the screen before anyone has
+         * read it — the reported symptom on fee collection, but true of every
+         * form here. Focusing the dialog itself keeps Escape, screen readers and
+         * tab order working without summoning the keyboard; the person taps the
+         * field they actually want to change.
+         */
+        host.querySelector('.m-modal')?.focus();
     });
 }
 
