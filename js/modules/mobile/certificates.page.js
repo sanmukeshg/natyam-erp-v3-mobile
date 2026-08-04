@@ -30,11 +30,16 @@ import { session } from '../../core/session.js';
 import { EVENTS } from '../../core/bus.js';
 import { formatNumber } from '../../utils/money.js';
 import { formatDateLong } from '../../utils/date.js';
-import { levelLabel } from '../../config/app.config.js';
+import { levelLabel, CAPABILITIES } from '../../config/app.config.js';
 import {
-    listCertificates, certificateSummary, verify
+    listCertificates, certificateSummary, verify,
+    TEMPLATES, checkEligibility, issue, revoke
 } from '../../services/certificates.service.js';
-import { formModal } from '../../ui/form.js';
+import { listStudents } from '../../services/students.service.js';
+import { listPrograms, PROGRAM_STATUS } from '../../services/programs.service.js';
+import { formModal, confirmModal } from '../../ui/form.js';
+import { toast } from '../../ui/toast.js';
+import { localDate } from '../../utils/date.js';
 
 const FILTERS = [
     { key: null, label: 'All' },
@@ -122,6 +127,12 @@ export default class MobileCertificatesPage extends Page {
 
             <!-- First, not buried: answering "is this real" down a telephone is
                  the reason this screen is worth having on a handset. -->
+            ${session.can(CAPABILITIES.CERTIFICATE_ISSUE) ? html`
+                <button class="m-fab" data-action="issue" aria-label="Issue a certificate">
+                    ${raw(icon('plus', { size: 24 }))}
+                </button>
+            ` : ''}
+
             <button class="m-btn m-btn-block" data-action="verify" style="margin-bottom:12px;">
                 ${raw(icon('search', { size: 15 }))} Verify a serial
             </button>
@@ -209,10 +220,16 @@ export default class MobileCertificatesPage extends Page {
                         </div>
                     ` : ''}
 
-                    <p class="m-subhead-note" style="margin-top:16px;">
-                        Issuing and revoking are done on the desktop app — a serial is permanent,
-                        and issuing can waive an eligibility rule with a reason recorded on the
-                        certificate forever.
+                    ${c.status !== 'revoked' && session.can(CAPABILITIES.CERTIFICATE_ISSUE) ? html`
+                        <div class="m-actions" style="margin-top:16px;">
+                            <button class="m-btn m-btn-ghost" data-action="revoke">
+                                ${raw(icon('x', { size: 15 }))} Revoke
+                            </button>
+                        </div>
+                    ` : ''}
+                    <p class="m-subhead-note" style="margin-top:8px;">
+                        A serial is permanent. Revoking keeps the record and reports the reason
+                        on every future verification — it is never edited or deleted.
                     </p>
                 </div>
             </div>
@@ -279,12 +296,140 @@ export default class MobileCertificatesPage extends Page {
             this.paintSheet();
         }));
         this.onDispose(on(root, 'click', '[data-action="verify"]', () => this.verifySerial()));
+        this.onDispose(on(root, 'click', '[data-action="issue"]', () => this.issueCertificate()));
+        this.onDispose(on(root, 'click', '[data-action="revoke"]', () => this.revokeCertificate()));
 
         this.onKey = (event) => {
             if (event.key === 'Escape' && this.detail) { this.detail = null; this.paintSheet(); }
         };
         window.addEventListener('keydown', this.onKey);
         this.onDispose(() => window.removeEventListener('keydown', this.onKey));
+    }
+    /* --------------------------------------------------- ISSUE AND REVOKE */
+    /*
+     * UAT BUG-202. The Student sheet offered "Issue certificate" but this
+     * module could only verify, so there was nowhere to issue from the
+     * certificates screen itself and no way to revoke one at all.
+     *
+     * Edit and Delete are deliberately NOT here, per the decision taken on this
+     * round. A serial is permanent and may already be in a family's hands:
+     * editing it would silently change what a past verification returned, and
+     * deleting it would make a serial that was really issued verify as
+     * non-existent. Revoking is the correcting path — it keeps the record,
+     * records why, and every future verification says so.
+     */
+
+    async issueCertificate() {
+        session.require(CAPABILITIES.CERTIFICATE_ISSUE, 'issue a certificate');
+
+        const [students, programs] = await Promise.all([
+            listStudents(session.branch()),
+            listPrograms(session.branch(), { status: PROGRAM_STATUS.COMPLETED }).catch(() => [])
+        ]);
+
+        if (!students.length) {
+            toast.error('Nobody to issue to', 'There are no students on the roll.');
+            return;
+        }
+
+        const issued = await formModal({
+            title: 'Issue a certificate',
+            description: 'The serial is allocated when it is issued and never reused.',
+            submitLabel: 'Check and issue',
+            fields: [
+                { name: 'studentId', label: 'Student', type: 'select', required: true,
+                  placeholder: 'Choose a student',
+                  options: students.map((s) => ({
+                      value: s.id,
+                      label: `${s.name}${s.level ? ` — ${levelLabel(s.level)}` : ''}`
+                  })) },
+                { name: 'templateId', label: 'Kind', type: 'select', required: true,
+                  placeholder: 'Choose a kind',
+                  options: TEMPLATES.map((t) => ({ value: t.id, label: t.name })) },
+                { name: 'programId', label: 'Programme', type: 'select',
+                  placeholder: programs.length ? 'Choose a programme' : 'No completed programme yet',
+                  options: programs.map((pr) => ({
+                      value: pr.id, label: `${pr.name} — ${formatDateLong(pr.date)}`
+                  })),
+                  showIf: (v) => v.templateId === 'participation',
+                  help: 'A participation certificate is issued against a completed programme.' },
+                { name: 'citation', label: 'Citation', type: 'textarea', rows: 2,
+                  showIf: (v) => v.templateId === 'merit',
+                  help: 'What is being recognised. It is printed on the certificate.' },
+                { name: 'issuedOn', label: 'Issued on', type: 'date' }
+            ],
+            values: { studentId: '', templateId: '', programId: '', citation: '', issuedOn: localDate() },
+            onSubmit: async (v) => {
+                const payload = {
+                    studentId: v.studentId,
+                    templateId: v.templateId,
+                    programId: v.programId || null,
+                    citation: v.citation || null
+                };
+
+                // Eligibility is asked of the service, never guessed here.
+                const check = await checkEligibility(payload);
+                if (check.ok) return issue({ ...payload, issuedOn: v.issuedOn || null });
+
+                const reasons = check.reasons.join(' ');
+                const proceed = await confirmModal({
+                    title: 'This does not meet the rules',
+                    message: `${reasons} A certificate can still be issued, but the override is `
+                           + 'recorded on it permanently and shows on every verification.',
+                    confirmLabel: 'Issue on override',
+                    tone: 'negative'
+                });
+                if (!proceed) throw new Error(reasons);
+
+                const overrideReason = await formModal({
+                    title: 'Why is this being overridden?',
+                    description: 'Stored on the certificate itself, not just in a log.',
+                    submitLabel: 'Issue',
+                    fields: [{ name: 'overrideReason', label: 'Reason', required: true }],
+                    values: { overrideReason: '' },
+                    onSubmit: (r) => r.overrideReason
+                });
+                if (!overrideReason) throw new Error('Not issued. Nothing has changed.');
+
+                return issue({ ...payload, issuedOn: v.issuedOn || null,
+                               force: true, overrideReason });
+            }
+        });
+
+        if (!issued) return;
+        toast.success('Certificate issued', issued.serial);
+        await this.load();
+    }
+
+    /**
+     * Revoking.
+     *
+     * The reason is required because it is what a future verification returns:
+     * `verify()` reports a revoked serial as found-but-revoked, with this text.
+     * The certificate is not deleted and the serial is never reissued.
+     */
+    async revokeCertificate() {
+        const c = this.detail;
+        if (!c) return;
+        session.require(CAPABILITIES.CERTIFICATE_ISSUE, 'revoke a certificate');
+
+        const done = await formModal({
+            title: `Revoke ${c.serial}`,
+            description: 'The record stays and the serial is never reused — every future '
+                       + 'verification will report it as revoked, with this reason.',
+            submitLabel: 'Revoke',
+            fields: [
+                { name: 'reason', label: 'Why', type: 'textarea', rows: 2, required: true,
+                  help: 'Shown to anyone who verifies this serial.' }
+            ],
+            values: { reason: '' },
+            onSubmit: (v) => revoke(c.id, { reason: v.reason })
+        });
+
+        if (!done) return;
+        toast.success('Certificate revoked', c.serial);
+        this.detail = null;
+        await this.load();
     }
 }
 

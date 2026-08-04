@@ -303,7 +303,7 @@ export default class MobileFeesPage extends Page {
         const { student } = this.detail;
 
         render(host, html`
-            <div class="m-modal-scrim" data-action="cancel-pay">
+            <div class="m-modal-scrim" data-role="pay-scrim">
                 <div class="m-modal" role="dialog" aria-modal="true" aria-label="Collect payment" tabindex="-1">
                 <div class="m-modal-head">
                     <div style="min-width:0;">
@@ -435,7 +435,6 @@ export default class MobileFeesPage extends Page {
         this.onDispose(on(root, 'click', '[data-action="open"]', (_e, t) => this.open(t.dataset.id)));
         this.onDispose(on(root, 'click', '[data-action="close-detail"]', () => this.close()));
         this.onDispose(on(root, 'click', '.m-profile', (event) => event.stopPropagation()));
-        this.onDispose(on(root, 'click', '.m-modal', (event) => event.stopPropagation()));
 
         this.onDispose(on(root, 'click', '[data-action="collect"]', (_e, t) => {
             this.payingInvoice = this.detail?.fees.invoices.find((i) => i.id === t.dataset.id) || null;
@@ -445,6 +444,25 @@ export default class MobileFeesPage extends Page {
         }));
 
         this.onDispose(on(root, 'click', '[data-action="cancel-pay"]', () => {
+            this.payingInvoice = null;
+            this.paintSheet();
+        }));
+
+        /*
+         * UAT BUG-203 — only a DIRECT hit on the backdrop dismisses.
+         *
+         * The backdrop is the dialog's parent, so a delegated closest() match
+         * treated every click inside the form as a click on the backdrop:
+         * tapping the amount field closed the popup and dropped you back on the
+         * student list. `on()` binds one listener per selector on the same root
+         * element, so a stopPropagation() in a sibling handler could never have
+         * prevented it either — it does not stop listeners on the same node.
+         *
+         * This is the rule js/ui/form.js already applies to its own scrim; the
+         * hand-rolled dialog here was the one that did not.
+         */
+        this.onDispose(on(root, 'click', '[data-role="pay-scrim"]', (event, target) => {
+            if (event.target !== target || this.busy) return;
             this.payingInvoice = null;
             this.paintSheet();
         }));

@@ -28,7 +28,10 @@ import { icon } from '../../ui/icons.js';
 import { session } from '../../core/session.js';
 import { EVENTS } from '../../core/bus.js';
 import { formatMoney, formatMoneyShort, formatNumber } from '../../utils/money.js';
-import { households, householdSummary } from '../../services/students.service.js';
+import { households, householdSummary, updateStudent } from '../../services/students.service.js';
+import { CAPABILITIES } from '../../config/app.config.js';
+import { formModal } from '../../ui/form.js';
+import { toast } from '../../ui/toast.js';
 
 /** Filter pills, in the order a phone user reaches for them. */
 const FILTERS = [
@@ -229,10 +232,17 @@ export default class MobileParentsPage extends Page {
                         `)}
                     </div>
 
-                    <p class="m-subhead-note" style="margin-top:16px;">
-                        Contact details are edited on the desktop app — the change writes to
-                        every child's record.
-                    </p>
+                    ${session.can(CAPABILITIES.STUDENT_EDIT) ? html`
+                        <div class="m-actions" style="margin-top:16px;">
+                            <button class="m-btn m-btn-ghost" data-action="edit-household">
+                                ${raw(icon('edit', { size: 15 }))} Edit contact details
+                            </button>
+                        </div>
+                        <p class="m-subhead-note" style="margin-top:8px;">
+                            A change writes to every child's record — that is what keeps the
+                            household together.
+                        </p>
+                    ` : ''}
                 </div>
             </div>
         `);
@@ -261,6 +271,8 @@ export default class MobileParentsPage extends Page {
             this.open = this.groups.find((g) => g.key === t.dataset.key) || null;
             this.paintSheet();
         }));
+        this.onDispose(on(root, 'click', '[data-action="edit-household"]', () => this.editHousehold()));
+
         this.onDispose(on(root, 'click', '[data-action="close-household"]', () => {
             this.open = null;
             this.paintSheet();
@@ -271,6 +283,70 @@ export default class MobileParentsPage extends Page {
         };
         window.addEventListener('keydown', this.onKey);
         this.onDispose(() => window.removeEventListener('keydown', this.onKey));
+    }
+    /* ------------------------------------------------------------- EDITING */
+    /*
+     * UAT BUG-204. The household could be read but not corrected — a changed
+     * phone number or a new email meant going to a desktop.
+     *
+     * There is no guardian RECORD to edit. A household is derived by grouping
+     * students on their guardian's phone number, and the contact details live
+     * on each child's own row. So one edit writes to every child in the
+     * household — which is what makes the household hold together, and is
+     * exactly what the desktop app does. The dialog says so rather than leaving
+     * it to be discovered.
+     *
+     * Changing the phone number re-keys the household, because the key IS the
+     * number. That is correct — the same family, now reachable on a new number
+     * — but it is worth the person knowing before they submit.
+     */
+    async editHousehold() {
+        const g = this.open;
+        if (!g) return;
+        session.require(CAPABILITIES.STUDENT_EDIT, 'edit a guardian');
+
+        const children = g.children || [];
+        const saved = await formModal({
+            title: `Edit ${g.guardianName}`,
+            description: children.length === 1
+                ? `Writes to ${children[0].name}'s record.`
+                : `Writes to all ${children.length} children's records.`,
+            submitLabel: 'Save changes',
+            fields: [
+                { name: 'guardianName', label: 'Name', required: true },
+                { name: 'guardianRelation', label: 'Relationship', type: 'select',
+                  options: ['Mother', 'Father', 'Grandparent', 'Guardian', 'Sibling']
+                      .map((r) => ({ value: r, label: r })) },
+                { name: 'guardianPhone', label: 'Phone', type: 'tel', required: true,
+                  help: 'The household is grouped by this number — changing it moves '
+                      + 'the whole family to the new one.' },
+                { name: 'guardianEmail', label: 'Email', type: 'email' },
+                { name: 'alternatePhone', label: 'Emergency number', type: 'tel' },
+                { name: 'address', label: 'Address', type: 'textarea', rows: 2 }
+            ],
+            values: {
+                guardianName: g.guardianName === 'Not recorded' ? '' : (g.guardianName || ''),
+                guardianRelation: g.guardianRelation || 'Mother',
+                guardianPhone: g.phone || '',
+                guardianEmail: g.email || '',
+                alternatePhone: g.alternatePhone || '',
+                address: g.address || ''
+            },
+            // Sequential, not Promise.all: these are writes to the same family,
+            // and a half-applied change is easier to reason about — and to
+            // finish by hand — than an unknown subset having landed.
+            onSubmit: async (v) => {
+                for (const child of children) await updateStudent(child.id, v);
+                return v;
+            }
+        });
+
+        if (!saved) return;
+        toast.success('Guardian updated', children.length === 1
+            ? children[0].name
+            : `${children.length} records changed.`);
+        this.open = null;
+        await this.load();
     }
 }
 

@@ -22,7 +22,7 @@ export const APP = Object.freeze({
     // 3.0.0, not a continuation of 2.26.5: v3 is a new application built by
     // splitting the reference project in two, with a mobile-first staff
     // experience. See CHANGELOG.md and MIGRATION_CHECKLIST.md.
-    version: '3.1.0',
+    version: '3.2.0',
     organisation: 'NATYAM — School of Kuchipudi',
     locale: 'en-IN',
     currency: 'INR',

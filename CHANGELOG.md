@@ -13,6 +13,73 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versioning is
 
 ---
 
+## [3.2.0] — unreleased
+
+Second UAT round. Every mobile item in
+`Bugs_and_Enhancements_v3_Mobile and Desktop - Round 2.docx`.
+
+### Added
+
+- **Programmes can be created and edited** (BUG-201). They were read-only here: no way to
+  schedule one and no way to correct a date or venue once scheduled. Both flows go through the
+  same services the desktop app uses, so the service's shape assertions — an examination needing
+  a level — are enforced identically.
+- **Certificates can be issued and revoked** (BUG-202). The Student sheet offered "Issue
+  certificate" but this module could only verify. Issuing asks the service for eligibility and,
+  when refused, offers an override whose reason is stored on the certificate itself. Revoking
+  requires a reason, which is what every future verification returns.
+  **Edit and Delete are deliberately absent.** A serial is permanent and may already be in a
+  family's hands: editing would silently change what a past verification returned, and deleting
+  would make a serial that was really issued verify as non-existent. Revoking is the correcting
+  path — it keeps the record and says why.
+- **Guardian contact details are editable** (BUG-204). There is no guardian *record* to edit — a
+  household is derived by grouping students on the guardian's phone number, and the details live
+  on each child's row — so one edit writes to every child in the household. Changing the number
+  re-keys the household, and the dialog says so before you submit.
+- **Master data is editable** (BUG-206). Branches, Fee plans and Curriculum could be added but
+  not corrected. Each editor reuses its create field list, seeded from the record. A curriculum
+  entry's stored value is shown read-only because existing student, batch and certificate
+  records point at that key.
+- **`readonly` fields and value-dependent options** in `js/ui/form.js`, matching natyam-admin:
+  `options` may be `(values) => [...]`, paired with `reactive: true` on the field being chosen
+  from.
+
+### Changed
+
+- **Bottom navigation redesigned** (ENH-203). The large solid-terracotta pill under the active
+  tab is gone. The bar is now dark, floating and slightly shorter, and the ACTIVE ICON carries
+  the state — filled terracotta with a small dot beneath it — while every other tab stays a
+  muted outline. `fill="none"` is a presentation attribute on the `<svg>` and CSS outranks it,
+  so one icon set serves both states.
+
+### Fixed
+
+- **The fee collection popup closed when any field was tapped** (BUG-203, Critical). A
+  regression introduced in 3.1.0 when the dialog moved to a centred modal: the backdrop became
+  the dialog's *parent* and carried `data-action="cancel-pay"`, so a delegated `closest()` match
+  from any field inside resolved to it. The `stopPropagation` guard could not help — `on()`
+  binds one listener per selector on the same root element, and that does not stop siblings.
+  Only a direct hit on the backdrop dismisses now, the rule `js/ui/form.js` already applied to
+  its own scrim. Every other scrim in the app is an empty *sibling*, so nothing else was
+  affected.
+- **The attendance Save bar overlapped the tab bar and hid the last students** (BUG-210). It was
+  `position: fixed` at `bottom: safe-bottom + 62px`, where 62px was a guess at the tab bar's
+  height — it is 63px plus a 10px margin. It is now sticky *inside* the scroller, so it cannot
+  reach the tab bar at any safe-area inset or bar height, and the roster no longer needs a magic
+  padding that drifted out of step with it. The helper text is gone and the button takes the
+  width, with no panel of its own.
+- **The batch dropdown ignored the branch** (BUG-208). Batches came from
+  `listBatches(session.branch())` — the session's branch filter, not the branch chosen in the
+  form — so with "All branches" in view, picking Kondapur still offered Hafeezpet's classes.
+  Move batch is likewise scoped to the student's own branch.
+- **Analytics → Trends was cramped** (BUG-205). A chip row used as an in-page filter had no room
+  beneath it: inside `.m-subhead` the header's padding supplies that gap, and Trends puts the
+  chips directly in the content column.
+- **The app bar and search strip sat on a cream panel.** Both now show the app background — the
+  bar is fully transparent, and the sticky search row repeats the shell's own `fixed` backdrop
+  so it hides scrolling rows without a visible seam. Header text and controls moved to the
+  light-on-dark treatment; the search field is glass rather than a white slab.
+
 ## [3.1.0] — unreleased
 
 First UAT round. Every item in `Bugs and Enhancements v3 mobile.docx`, which was the sole

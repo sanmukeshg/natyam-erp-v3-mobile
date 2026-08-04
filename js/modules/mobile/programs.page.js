@@ -31,10 +31,13 @@ import { session } from '../../core/session.js';
 import { EVENTS } from '../../core/bus.js';
 import { formatMoney, formatNumber } from '../../utils/money.js';
 import { formatDate, formatDateLong } from '../../utils/date.js';
-import { CAPABILITIES, levelLabel } from '../../config/app.config.js';
+import { CAPABILITIES, levelLabel, curriculum, programTypes } from '../../config/app.config.js';
+import { listBranches } from '../../services/settings.service.js';
+import { listStaff } from '../../services/staff.service.js';
+import { localDate } from '../../utils/date.js';
 import {
     PROGRAM_STATUS, listPrograms, programSummary, programDetail,
-    setParticipants, eligibleStudents
+    setParticipants, eligibleStudents, schedule, updateProgram
 } from '../../services/programs.service.js';
 import { formModal } from '../../ui/form.js';
 
@@ -130,6 +133,12 @@ export default class MobileProgramsPage extends Page {
                     `)}
                 </div>
             </div>
+
+            ${session.can(CAPABILITIES.PROGRAM_EDIT) ? html`
+                <button class="m-fab" data-action="add" aria-label="Schedule a programme">
+                    ${raw(icon('plus', { size: 24 }))}
+                </button>
+            ` : ''}
 
             ${rows.length ? html`
                 <div class="m-stack">
@@ -244,7 +253,16 @@ export default class MobileProgramsPage extends Page {
                     ` : html`<p class="m-subhead-note">Nobody has been cast yet.</p>`}
 
                     ${live && session.can(CAPABILITIES.PROGRAM_EDIT) ? html`
-                        <button class="m-btn m-btn-block" data-action="cast">Choose cast</button>
+                        <div class="m-actions" style="margin-top:10px;">
+                            <button class="m-btn" data-action="cast">
+                                ${raw(icon('users', { size: 15 }))} Choose cast
+                            </button>
+                            ${session.can(CAPABILITIES.PROGRAM_EDIT) ? html`
+                                <button class="m-btn m-btn-ghost" data-action="edit-program">
+                                    ${raw(icon('edit', { size: 15 }))} Edit programme
+                                </button>
+                            ` : ''}
+                        </div>
                     ` : ''}
 
                     <p class="m-subhead-note" style="margin-top:16px;">
@@ -331,12 +349,103 @@ export default class MobileProgramsPage extends Page {
             this.paintSheet();
         }));
         this.onDispose(on(root, 'click', '[data-action="cast"]', () => this.chooseCast()));
+        this.onDispose(on(root, 'click', '[data-action="edit-program"]', () => this.editProgram()));
+        this.onDispose(on(root, 'click', '[data-action="add"]', () => this.newProgram()));
 
         this.onKey = (event) => {
             if (event.key === 'Escape' && this.detail) { this.detail = null; this.paintSheet(); }
         };
         window.addEventListener('keydown', this.onKey);
         this.onDispose(() => window.removeEventListener('keydown', this.onKey));
+    }
+    /* --------------------------------------------------------- CREATE/EDIT */
+    /*
+     * UAT BUG-201. Programmes were read-only on mobile: no way to schedule one,
+     * and no way to correct a date or a venue once scheduled. Both flows go
+     * through the same services the desktop app uses, so the service's own
+     * shape assertions — an examination needing a level, a name and a date
+     * being required — are enforced identically on both surfaces.
+     */
+
+    /** The programme form's fields. `existing` seeds them for an edit. */
+    async programFields(existing = null) {
+        const [branches, staff] = await Promise.all([
+            listBranches(),
+            listStaff(session.branch()).catch(() => [])
+        ]);
+        const defaultBranchId = existing?.branchId
+            || session.branch()
+            || (branches.length === 1 ? branches[0].id : '');
+
+        return [
+            { name: 'name', label: 'Name', required: true, value: existing?.name },
+            { name: 'type', label: 'Type', type: 'select', required: true, placeholder: 'Choose a type',
+              options: programTypes().map((t) => ({ value: t.value, label: t.label })),
+              value: existing?.type },
+            { name: 'date', label: 'Date', type: 'date', required: true,
+              value: existing?.date || localDate() },
+            { name: 'branchId', label: 'Branch', type: 'select', required: true,
+              placeholder: branches.length > 1 ? 'Choose a branch' : null,
+              options: branches.map((b) => ({ value: b.id, label: b.name })),
+              value: defaultBranchId },
+            // Required by the service for examinations only — hence showIf,
+            // which also keeps the validator off it for every other type.
+            { name: 'level', label: 'Level examined', type: 'select', placeholder: 'Choose a level',
+              options: curriculum().map((l) => ({ value: l.value, label: l.label })),
+              value: existing?.level,
+              showIf: (v) => v.type === 'examination',
+              help: 'An examination is held for one specific level.' },
+            { name: 'venue', label: 'Venue', value: existing?.venue },
+            { name: 'leadStaffId', label: 'Led by', type: 'select', placeholder: 'Not assigned',
+              options: staff.map((m) => ({ value: m.id, label: `${m.name} — ${m.roleLabel}` })),
+              value: existing?.leadStaffId },
+            { name: 'notes', label: 'Notes', type: 'textarea', rows: 2, value: existing?.notes }
+        ];
+    }
+
+    /** Turns the field list into the `values` map formModal seeds itself from. */
+    static seed(fields) {
+        return Object.fromEntries(fields.map((f) => [f.name, f.value ?? '']));
+    }
+
+    async newProgram() {
+        session.require(CAPABILITIES.PROGRAM_EDIT, 'schedule a programme');
+        const fields = await this.programFields();
+
+        const created = await formModal({
+            title: 'Schedule a programme',
+            description: 'A performance, workshop, competition, examination or rehearsal.',
+            submitLabel: 'Schedule',
+            fields,
+            values: MobileProgramsPage.seed(fields),
+            onSubmit: (v) => schedule(v)
+        });
+
+        if (!created) return;
+        toast.success('Scheduled', `${created.name} on ${formatDateLong(created.date)}`);
+        await this.load();
+        await this.open(created.id);
+    }
+
+    async editProgram() {
+        const program = this.detail?.program;
+        if (!program) return;
+        session.require(CAPABILITIES.PROGRAM_EDIT, 'edit a programme');
+
+        const fields = await this.programFields(program);
+
+        const saved = await formModal({
+            title: `Edit ${program.name}`,
+            submitLabel: 'Save changes',
+            fields,
+            values: MobileProgramsPage.seed(fields),
+            onSubmit: (v) => updateProgram(program.id, v)
+        });
+
+        if (!saved) return;
+        toast.success('Programme updated', program.name);
+        await this.open(program.id);
+        await this.load();
     }
 }
 

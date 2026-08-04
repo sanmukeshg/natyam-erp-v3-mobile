@@ -199,7 +199,6 @@ export default class MobileAttendancePage extends Page {
                 </div>
 
                 <div class="m-savebar">
-                    <span class="m-savebar-hint">Tap only who is absent</span>
                     <button class="m-btn" data-action="save" ${canMark && !this.saving ? '' : 'disabled'}>
                         ${this.saving ? 'Saving…' : reg.alreadyMarked ? 'Save corrections' : 'Save register'}
                     </button>

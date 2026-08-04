@@ -363,18 +363,27 @@ export default class MobileStudentsPage extends Page {
                   { value: 'male', label: 'Male' },
                   { value: 'other', label: 'Other' }
               ] },
-            { name: 'branchId', label: 'Branch', type: 'select', required: true,
+            { name: 'branchId', label: 'Branch', type: 'select', required: true, reactive: true,
               placeholder: branches.length > 1 ? 'Choose a branch' : null,
               options: branches.map((b) => ({ value: b.id, label: b.name })) },
             { name: 'level', label: 'Level', type: 'select', required: true, placeholder: 'Choose a level',
               options: curriculum().map((l) => ({ value: l.value, label: l.label })) },
+            /*
+             * UAT BUG-208 — the batch list follows the branch chosen ABOVE, not
+             * the session's branch filter. `listBatches(session.branch())`
+             * returns every batch when the session is on "All branches", so
+             * picking Kondapur still offered Hafeezpet's classes and the service
+             * would have accepted the mismatch.
+             */
             { name: 'batchId', label: 'Batch', type: 'select', placeholder: 'Place later',
-              options: open.map((b) => ({
-                  value: b.id,
-                  label: `${b.name} — ${b.enrolled}/${b.capacity || '∞'}`
-                       + (b.capacity && b.enrolled >= b.capacity ? ' (full)' : '')
-              })),
-              help: 'A student with no batch appears on no register.' },
+              options: (v) => open
+                  .filter((b) => !v.branchId || b.branchId === v.branchId)
+                  .map((b) => ({
+                      value: b.id,
+                      label: `${b.name} — ${b.enrolled}/${b.capacity || '∞'}`
+                           + (b.capacity && b.enrolled >= b.capacity ? ' (full)' : '')
+                  })),
+              help: 'Only batches at the chosen branch. A student with no batch appears on no register.' },
             ...(existing ? [] : [
                 { name: 'feePlanId', label: 'Fee plan', type: 'select', placeholder: 'No plan',
                   options: plans.map((p) => ({ value: p.id, label: `${p.name} — ${formatMoney(p.amount)}` })),
@@ -523,7 +532,11 @@ export default class MobileStudentsPage extends Page {
         const student = this.profile?.student;
         if (!student) return;
 
-        const batches = (await listBatches(session.branch())).filter((b) => b.status !== 'closed');
+        // Same rule as the enrol form (UAT BUG-208): only this student's own
+        // branch, so a move cannot silently relocate them to another site.
+        const batches = (await listBatches(session.branch()))
+            .filter((b) => b.status !== 'closed')
+            .filter((b) => !student.branchId || b.branchId === student.branchId);
 
         const moved = await formModal({
             title: `Move ${student.name}`,

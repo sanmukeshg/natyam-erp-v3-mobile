@@ -34,7 +34,7 @@ import { formatMoney } from '../../utils/money.js';
 import { APP, CAPABILITIES, PREFERENCE_DEFAULTS } from '../../config/app.config.js';
 import {
     institute, listBranches, listFeePlans, listMasterSet, MASTER_SETS,
-    createBranch, createFeePlan
+    createBranch, createFeePlan, updateBranch, updateFeePlan, updateMasterEntry
 } from '../../services/settings.service.js';
 import { exposedFeeFrequencies } from '../../config/app.config.js';
 import { formModal } from '../../ui/form.js';
@@ -191,11 +191,18 @@ export default class MobileSettingsPage extends Page {
                         <div class="m-card" style="padding:13px 14px;">
                             <div class="m-card-title">${b.name}${b.code ? ` · ${b.code}` : ''}</div>
                             <div class="m-card-meta">${b.address || 'No address'}</div>
-                            ${b.phone ? html`
-                                <a class="m-btn m-btn-ghost m-btn-block" href="tel:${b.phone}" style="margin-top:10px;">
-                                    ${raw(icon('phone', { size: 16 }))} ${b.phone}
-                                </a>
-                            ` : ''}
+                            <div class="m-actions" style="margin-top:10px;">
+                                ${b.phone ? html`
+                                    <a class="m-btn m-btn-ghost" href="tel:${b.phone}">
+                                        ${raw(icon('phone', { size: 15 }))} ${b.phone}
+                                    </a>
+                                ` : ''}
+                                ${session.can(CAPABILITIES.SETTINGS_EDIT) ? html`
+                                    <button class="m-btn m-btn-ghost" data-action="edit-branch" data-id="${b.id}">
+                                        ${raw(icon('edit', { size: 15 }))} Edit
+                                    </button>
+                                ` : ''}
+                            </div>
                         </div>
                     `) : html`<div class="m-card m-empty">No branches.</div>`}
                 </div>
@@ -214,7 +221,15 @@ export default class MobileSettingsPage extends Page {
                                     ${p.frequency ? titleCase(p.frequency) : '—'}${p.status !== 'active' ? ` · ${titleCase(p.status)}` : ''}
                                 </div>
                             </div>
-                            <span class="m-badge">${formatMoney(p.amount || 0)}</span>
+                            <div class="m-invoice-right">
+                                <span class="m-badge">${formatMoney(p.amount || 0)}</span>
+                                ${session.can(CAPABILITIES.SETTINGS_EDIT) ? html`
+                                    <button class="m-icon-btn m-icon-btn-sm" data-action="edit-plan"
+                                            data-id="${p.id}" aria-label="Edit ${p.name}">
+                                        ${raw(icon('edit', { size: 14 }))}
+                                    </button>
+                                ` : ''}
+                            </div>
                         </div>
                     `) : html`<div class="m-card m-empty">No fee plans.</div>`}
                 </div>
@@ -232,7 +247,15 @@ export default class MobileSettingsPage extends Page {
                                 <div class="m-invoice-no">${e.label}</div>
                                 ${e.status !== 'active' ? html`<div class="m-invoice-due">${titleCase(e.status)}</div>` : ''}
                             </div>
-                            <span class="m-badge">${e.order}</span>
+                            <div class="m-invoice-right">
+                                <span class="m-badge">${e.order}</span>
+                                ${session.can(CAPABILITIES.SETTINGS_EDIT) ? html`
+                                    <button class="m-icon-btn m-icon-btn-sm" data-action="edit-entry"
+                                            data-value="${e.value}" aria-label="Edit ${e.label}">
+                                        ${raw(icon('edit', { size: 14 }))}
+                                    </button>
+                                ` : ''}
+                            </div>
                         </div>
                     `) : html`<div class="m-card m-empty">Using the shipped defaults.</div>`}
                 </div>
@@ -272,6 +295,10 @@ export default class MobileSettingsPage extends Page {
             session.setPref('theme', t.value);
             bus.emit(EVENTS.PREFS_CHANGED, { key: 'theme', value: t.value });
         }));
+
+        this.onDispose(on(root, 'click', '[data-action="edit-branch"]', (_e, t) => this.editBranch(t.dataset.id)));
+        this.onDispose(on(root, 'click', '[data-action="edit-plan"]', (_e, t) => this.editFeePlan(t.dataset.id)));
+        this.onDispose(on(root, 'click', '[data-action="edit-entry"]', (_e, t) => this.editLevel(t.dataset.value)));
 
         this.onDispose(on(root, 'click', '[data-action="settings-add"]', () => {
             if (this.tab === 'branches') this.addBranch();
@@ -325,6 +352,140 @@ export default class MobileSettingsPage extends Page {
         if (!created) return;
         toast.success('Fee plan added', created.name);
         this.data.feePlans = null;
+        await this.loadTab();
+    }
+
+    /* ------------------------------------------------------------- EDITING */
+    /*
+     * UAT BUG-206. Every master-data section could create but not edit, so a
+     * typo in a branch code or a fee amount was permanent on this surface. Each
+     * editor reuses the same field list as its create counterpart, seeded from
+     * the existing record, and hands the whole set to the service — which owns
+     * validation and the guardrails this page does not reimplement.
+     */
+
+    async editBranch(id) {
+        const branch = (this.data.branches || []).find((b) => b.id === id);
+        if (!branch) return;
+
+        const saved = await formModal({
+            title: `Edit ${branch.name}`,
+            description: 'Shown on registers, receipts and reports.',
+            submitLabel: 'Save changes',
+            fields: [
+                { name: 'name', label: 'Branch name', required: true },
+                { name: 'code', label: 'Short code', required: true, maxLength: 10,
+                  help: 'Used on registers and receipts. Stored in capitals.' },
+                { name: 'address', label: 'Address', type: 'textarea', rows: 2 },
+                { name: 'phone', label: 'Phone', type: 'tel' },
+                { name: 'email', label: 'Email', type: 'email' }
+            ],
+            values: {
+                name: branch.name || '', code: branch.code || '',
+                address: branch.address || '', phone: branch.phone || '',
+                email: branch.email || ''
+            },
+            onSubmit: (v) => updateBranch(id, { ...v, code: String(v.code || '').toUpperCase() })
+        });
+
+        if (!saved) return;
+        toast.success('Branch updated', saved.name);
+        this.data.branches = null;
+        await this.loadTab();
+    }
+
+    /**
+     * `updateFeePlan()` returns `{ plan, affected }` — how many students sit on
+     * this plan going forward. That is surfaced rather than swallowed: changing
+     * an amount while dozens of students are billed against it is exactly the
+     * kind of change somebody needs to see land. Invoices already raised keep
+     * their own amounts; the service does not touch them.
+     */
+    async editFeePlan(id) {
+        const plan = (this.data.feePlans || []).find((p) => p.id === id);
+        if (!plan) return;
+
+        const saved = await formModal({
+            title: `Edit ${plan.name}`,
+            description: 'Invoices already raised keep the amount they were raised at.',
+            submitLabel: 'Save changes',
+            fields: [
+                { name: 'name', label: 'Plan name', required: true },
+                { name: 'amount', label: 'Fee', type: 'money', required: true, min: 1,
+                  help: 'Charged each period, in whole rupees.' },
+                { name: 'frequency', label: 'Charged', type: 'select', required: true,
+                  options: exposedFeeFrequencies().map((f) => ({ value: f.value, label: f.label })) },
+                { name: 'registrationFee', label: 'One-off registration fee', type: 'money', min: 0 },
+                { name: 'costumeFee', label: 'One-off costume fee', type: 'money', min: 0 }
+            ],
+            values: {
+                name: plan.name || '', amount: plan.amount ?? '',
+                frequency: plan.frequency || 'monthly',
+                registrationFee: plan.registrationFee ?? '',
+                costumeFee: plan.costumeFee ?? ''
+            },
+            onSubmit: (v) => updateFeePlan(id, v)
+        });
+
+        if (!saved) return;
+        toast.success('Fee plan updated', saved.affected
+            ? `${saved.affected} student${saved.affected === 1 ? '' : 's'} billed on this plan going forward.`
+            : 'No student is on this plan yet.');
+        this.data.feePlans = null;
+        await this.loadTab();
+    }
+
+    /**
+     * The label and the status are editable; the **stored value is not**.
+     * `updateMasterEntry()` pins it deliberately because existing student,
+     * batch and certificate records point at that key — changing it would
+     * orphan them. The dialog shows it read-only rather than hiding it, so the
+     * immutability is visible rather than surprising.
+     */
+    async editLevel(value) {
+        const entry = (this.data.levels || []).find((e) => e.value === value);
+        if (!entry) return;
+
+        const others = (this.data.levels || []).filter((e) => e.value !== value);
+
+        const saved = await formModal({
+            title: `Edit ${entry.label}`,
+            description: `In ${MASTER_SETS.levels.label.toLowerCase()}. Appears wherever this list is offered.`,
+            submitLabel: 'Save changes',
+            fields: [
+                { name: 'label', label: 'Name', required: true,
+                  help: 'What people see in the dropdown.' },
+                { name: 'storedValue', label: 'Stored value', readonly: true,
+                  help: 'Cannot be changed — existing records point at it.' },
+                { name: 'status', label: 'Status', type: 'select',
+                  options: [
+                      { value: 'active', label: 'Active — offered in dropdowns' },
+                      { value: 'inactive', label: 'Inactive — hidden from new records' }
+                  ],
+                  help: 'Making an entry inactive hides it from new records; anything already '
+                      + 'using it keeps it.' }
+            ],
+            values: {
+                label: entry.label || '',
+                storedValue: entry.value,
+                status: entry.status || 'active'
+            },
+            // A duplicate label is confusing even when the stored keys differ —
+            // the dropdown would offer the same words twice.
+            validateAll: (v) => {
+                const label = String(v.label || '').trim().toLowerCase();
+                return label && others.some((e) => e.label.trim().toLowerCase() === label)
+                    ? { label: `"${v.label.trim()}" is already in this list.` } : null;
+            },
+            onSubmit: (v) => updateMasterEntry('levels', value, {
+                label: String(v.label).trim(),
+                status: v.status
+            })
+        });
+
+        if (!saved) return;
+        toast.success('Entry updated', MASTER_SETS.levels.label);
+        this.data.levels = null;
         await this.loadTab();
     }
 }

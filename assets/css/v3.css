@@ -33,6 +33,7 @@
 :root {
     /* ---- v3 brand ---- */
     --v3-terracotta:      #B45B34;
+    --v3-terracotta-bright: #E2622B;
     --v3-terracotta-deep: #8C4A28;
     --v3-cream:           #FFF8EF;
     --v3-ink:             #3A2013;
@@ -47,7 +48,7 @@
        that worst case, not at an average, because the artwork's dark region is
        exactly where the bar sits. Now 5.1:1 and 5.3:1. */
     --v3-tab-active:   #FFFFFF;
-    --v3-tab-inactive: #4A3826;
+    --v3-tab-inactive: rgba(255, 248, 239, 0.62);
 
     /* ---- tone ramp ---- */
     --v3-positive: #8FD99A;
@@ -97,7 +98,7 @@
        tops out at 5.35:1 and the darkest colour in this palette reaches 3.83.
        Nothing in the ramp passes AA there. 0.62 keeps the warm translucent
        finish and gives the ink ramp room to be read. */
-    --v3-tabbar-bg:   rgba(255, 248, 239, 0.62);
+    --v3-tabbar-bg:   rgba(28, 15, 8, 0.82);
 
     --v3-tone-bg-positive: rgba(94, 166, 101, 0.14);
     --v3-tone-bg-negative: rgba(224, 94, 74, 0.14);
@@ -133,7 +134,7 @@
     --v3-muted:       rgba(255, 255, 255, 0.75);
     --v3-ghost-bg:    rgba(255, 255, 255, 0.16);
 
-    --v3-tabbar-bg:   rgba(255, 248, 239, 0.68);
+    --v3-tabbar-bg:   rgba(24, 13, 7, 0.86);
 
     /* TONE BACKGROUNDS — v3 FIX, diverges from the design's light variant.
        The design pairs opaque pastel tone-fills (#E9F5EF, #FBE4DC, #FBEEDC)
@@ -253,39 +254,61 @@
  * on a notched phone the bubble lifts clear of the home indicator instead of
  * growing a tall dead strip inside itself.
  */
+/*
+ * UAT ENH-203 — a floating, dark, elevated bar.
+ *
+ * Was a near-white panel with a large solid-terracotta pill under the active
+ * tab. The pill dominated the screen and forced white-on-terracotta label text
+ * to carry the selected state on its own. Now the bar recedes and the ACTIVE
+ * ICON carries the state: filled terracotta with a small dot beneath it, while
+ * every other tab stays a muted outline.
+ */
 .m-tabbar {
     flex-shrink: 0; display: flex; align-items: stretch;
-    margin: 0 10px calc(var(--v3-safe-bottom) + 10px);
-    padding: 5px 5px;
+    margin: 0 12px calc(var(--v3-safe-bottom) + 10px);
+    padding: 4px;
     background: var(--v3-tabbar-bg);
-    backdrop-filter: blur(9px) saturate(145%);
-    -webkit-backdrop-filter: blur(9px) saturate(145%);
-    border: 1px solid rgba(255, 248, 239, 0.35);
-    border-radius: 22px;
+    backdrop-filter: blur(14px) saturate(150%);
+    -webkit-backdrop-filter: blur(14px) saturate(150%);
+    border: 1px solid rgba(255, 248, 239, 0.14);
+    border-radius: 20px;
     box-shadow:
-        0 8px 24px rgba(30, 15, 8, 0.28),
-        0 2px 6px rgba(30, 15, 8, 0.16);
+        0 10px 30px rgba(0, 0, 0, 0.38),
+        0 2px 8px rgba(0, 0, 0, 0.22);
 }
 .m-tab {
+    position: relative;
     flex: 1; display: flex; flex-direction: column;
-    align-items: center; justify-content: center; gap: 3px;
-    padding: 5px 0; min-height: var(--v3-tap);
+    align-items: center; justify-content: center; gap: 2px;
+    /* Slightly shorter than the 44px floor, which the bar's own padding and
+       the gap between tabs restores as tappable area. */
+    padding: 5px 0 7px; min-height: 40px;
     background: none; border: none; cursor: pointer;
     font-family: inherit; text-decoration: none;
     color: var(--v3-tab-inactive);
-    border-radius: 17px;
-    transition: background var(--duration-fast) var(--ease-standard);
+    border-radius: 15px;
+    transition: color var(--duration-fast) var(--ease-standard);
 }
-.m-tab:hover { text-decoration: none; color: var(--v3-tab-inactive); }
+/* Inactive icons are outlines — the stroke the icon set already draws. */
+.m-tab svg { fill: none; transition: fill var(--duration-fast) var(--ease-standard); }
+.m-tab:hover { text-decoration: none; color: var(--v3-cream); }
 .m-tab-label { font-size: 10px; font-weight: var(--weight-medium); }
 
-/* The active slot gets its own smaller bubble inside the bar. On a near-white
-   bar the old treatment was colour alone, and #E2622B on white measures 3.4:1
-   — under AA, on a 10px label. The tint plus the deeper terracotta below fixes
-   both the legibility and the "which tab am I on" glance. */
 .m-tab[aria-current="page"], .m-tab[aria-expanded="true"] {
-    color: var(--v3-tab-active);
-    background: var(--v3-terracotta);
+    color: var(--v3-terracotta-bright);
+}
+/* Filled, not just tinted. `fill="none"` is a presentation attribute on the
+   <svg>, and CSS outranks it — so the same icon set serves both states. */
+.m-tab[aria-current="page"] svg,
+.m-tab[aria-expanded="true"] svg { fill: currentColor; }
+
+/* The indicator: a small dot under the active tab, replacing the pill. */
+.m-tab[aria-current="page"]::after,
+.m-tab[aria-expanded="true"]::after {
+    content: ''; position: absolute; bottom: 2px; left: 50%;
+    width: 4px; height: 4px; margin-left: -2px;
+    border-radius: var(--v3-radius-pill);
+    background: var(--v3-terracotta-bright);
 }
 .m-tab[aria-current="page"] .m-tab-label,
 .m-tab[aria-expanded="true"] .m-tab-label { font-weight: var(--weight-bold); }
@@ -563,6 +586,15 @@
        scrollbar as a dark line straight across the white subhead. */
     scrollbar-width: none; -ms-overflow-style: none;
 }
+/*
+ * UAT BUG-205 — a chip row used as an in-page filter needs room beneath it.
+ *
+ * Inside `.m-subhead` the header’s own padding separates the pills from what
+ * follows, so the rule above only sets a TOP margin. Analytics → Trends puts
+ * the Students/Income/Attendance chips directly in the content column, where
+ * nothing supplied that gap and the first chart card sat flush against them.
+ */
+.m-content > .m-chip-scroll { margin-bottom: 10px; }
 .m-chip-scroll::-webkit-scrollbar { display: none; }
 .m-pill {
     flex-shrink: 0; height: 33px; padding: 0 13px; cursor: pointer;
@@ -723,8 +755,8 @@
 .m-roster {
     display: flex; flex-direction: column; gap: 6px;
     margin-top: 12px;
-    /* Clear the save bar + tab bar so the last student is never trapped. */
-    padding-bottom: calc(var(--v3-safe-bottom) + 132px);
+    /* No reserved gap for the save bar any more — it is in the flow directly
+       below this list (BUG-210), so it cannot cover the last row. */
 }
 
 /* Present is the resting state and stays quiet; absent is the state that
@@ -765,17 +797,39 @@
 }
 
 /* Pinned above the tab bar: on a phone the save action must never scroll away. */
+/*
+ * UAT BUG-210 — the save bar sits INSIDE the scroller, not over the app.
+ *
+ * It used to be `position: fixed` at `bottom: safe-bottom + 62px`, where 62px
+ * was a guess at the tab bar's height. The tab bar actually occupies 63px plus
+ * its own 10px margin, so the bar sat 10px too low and overlapped it — and
+ * because the bar was outside the flow, the roster needed a matching magic
+ * padding to keep the last student reachable, which drifted out of step with it.
+ *
+ * Sticky inside `.m-content` makes the geometry structural instead of
+ * arithmetic: the tab bar is a SIBLING of the scroller, so a sticky child can
+ * never reach it, at any safe-area inset or tab-bar height. Scrolled to the
+ * end, the bar comes to rest after the final row, so nobody is trapped behind
+ * it.
+ */
 .m-savebar {
-    position: fixed; left: 0; right: 0; z-index: 15;
-    bottom: calc(var(--v3-safe-bottom) + 62px);
-    display: flex; align-items: center; justify-content: space-between; gap: 12px;
-    padding: 10px var(--space-4);
-    background: var(--v3-tabbar-bg);
-    backdrop-filter: blur(9px) saturate(145%); -webkit-backdrop-filter: blur(9px) saturate(145%);
-    border-top: 1px solid rgba(196, 155, 110, 0.3);
-    box-shadow: 0 -4px 16px rgba(58, 32, 20, 0.12);
+    position: sticky; bottom: 0; z-index: 15;
+    display: flex; align-items: center; gap: 12px;
+    margin: 10px 0 0;
+    /* Bottom padding is 0: `.m-content` already contributes its own 16px below
+       this, and the two together left a 28px trench above the tab bar. */
+    padding: 8px 0 0;
+    /* No panel of its own — the button sits on the app background, carrying
+       its own shadow. The button is opaque and full width, so it still hides
+       the rows sliding under it. */
+    background: none;
 }
-.m-savebar-hint { font-size: 11.5px; font-weight: var(--weight-semibold); color: var(--v3-ink-soft); }
+/* One control, so it takes the width — the helper text it used to share the
+   row with is gone (BUG-210). */
+.m-savebar .m-btn {
+    flex: 1;
+    box-shadow: 0 4px 14px rgba(30, 15, 8, 0.35);
+}
 .m-pill[disabled] { opacity: 0.5; }
 
 /* ==========================================================================
@@ -1190,6 +1244,8 @@
 }
 .m-textarea { min-height: 76px; padding: 10px 12px; resize: vertical; line-height: var(--leading-normal); }
 .m-field[data-invalid="true"] .m-input { border-color: var(--v3-negative); }
+/* A readonly field is shown, not offered — see `readonly` in js/ui/form.js. */
+.m-input[readonly] { opacity: 0.6; cursor: default; background: rgba(255, 255, 255, 0.04); }
 
 /* The OS draws the open <select> popup on its own opaque sheet — it cannot
    inherit the glass, and white-on-white is what you get without this. */
