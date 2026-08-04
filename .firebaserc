@@ -1,0 +1,14 @@
+{
+  "projects": {
+    "default": "natyam-erp"
+  },
+  "targets": {
+    "natyam-erp": {
+      "hosting": {
+        "mobile": [
+          "natyam-erp-mobile"
+        ]
+      }
+    }
+  }
+}

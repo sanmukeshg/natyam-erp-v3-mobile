@@ -25,3 +25,9 @@ natyam-backup-*.json
 natyam-before-restore-*.json
 natyam-before-erase-*.json
 natyam-*-*.json
+
+# Firebase CLI deploy cache and logs. The hosting config itself
+# (firebase.json, .firebaserc) IS tracked - this is only local state.
+.firebase/
+firebase-debug.log
+firebase-debug.*.log
