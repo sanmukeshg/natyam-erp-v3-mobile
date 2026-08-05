@@ -47,6 +47,33 @@ const QUICK_ACTIONS = [
     { label: 'Attendance', icon: 'check-square', link: '#/attendance', color: '#3E6B31', bg: 'rgba(62,107,49,0.2)' }
 ];
 
+/* ENH-301 — the Owner's Quick Access Workspace.
+ *
+ * The split is by HOW OFTEN, not by what the modules are. Daily operations is
+ * what gets opened most days; Management is what gets opened most months. That
+ * ordering is the whole point of the grouping — putting Finance next to
+ * Attendance because both are "modules" would tell the owner nothing about
+ * which one she is about to want.
+ *
+ * Attendance, Fees and Students are deliberately NOT repeated here: they are
+ * already in Quick actions above, and repeating them is the duplication this
+ * ticket asks to remove. */
+const DAILY_OPERATIONS = [
+    { label: 'Admissions', icon: 'inbox', link: '#/admissions', color: '#8C4A28', bg: 'rgba(140,74,40,0.2)' },
+    { label: 'Batches', icon: 'grid', link: '#/batches', color: '#5A6FA8', bg: 'rgba(90,111,168,0.2)' },
+    { label: 'Parents', icon: 'phone', link: '#/parents', color: '#3E6B31', bg: 'rgba(62,107,49,0.2)' },
+    { label: 'Notifications', icon: 'bell', link: '#/notifications', color: '#B45B34', bg: 'rgba(180,91,52,0.22)' }
+];
+
+const MANAGEMENT = [
+    { label: 'Staff', icon: 'briefcase', link: '#/staff', color: '#5A6FA8', bg: 'rgba(90,111,168,0.2)' },
+    { label: 'Programmes', icon: 'star', link: '#/programs', color: '#B45B34', bg: 'rgba(180,91,52,0.22)' },
+    { label: 'Certificates', icon: 'award', link: '#/certificates', color: '#3E7DBF', bg: 'rgba(62,125,191,0.2)' },
+    { label: 'Finance', icon: 'trending-up', link: '#/finance', color: '#3E6B31', bg: 'rgba(62,107,49,0.2)' },
+    { label: 'Analytics', icon: 'bar-chart', link: '#/analytics', color: '#5A6FA8', bg: 'rgba(90,111,168,0.2)' },
+    { label: 'Settings', icon: 'settings', link: '#/settings', color: '#8C4A28', bg: 'rgba(140,74,40,0.2)' }
+];
+
 export default class MobileDashboardPage extends Page {
     constructor(context) {
         super(context);
@@ -157,21 +184,104 @@ export default class MobileDashboardPage extends Page {
     }
 
     /** A quick action is only offered if the person could actually use it. */
+    /**
+     * Whether this tile should be shown at all.
+     *
+     * Gating here as well as in the router is not belt-and-braces for its own
+     * sake: a tile that navigates to a "not available to your role" screen is
+     * worse than no tile, because it looks like the app is broken rather than
+     * like the permission is absent. The router still refuses independently.
+     *
+     * Anything without an entry is open to every role that reaches this
+     * dashboard — the same default the original four had.
+     */
     allowed(action) {
-        if (action.link === '#/fees') return session.can('fee.view');
-        if (action.link === '#/students') return session.can('student.view');
-        if (action.link === '#/attendance') return session.can('attendance.view');
-        return true;
+        const needs = {
+            '#/fees': 'fee.view',
+            '#/students': 'student.view',
+            '#/attendance': 'attendance.view',
+            '#/admissions': 'admission.view',
+            '#/batches': 'student.view',
+            '#/parents': 'student.view',
+            '#/staff': 'staff.view',
+            '#/programs': 'program.view',
+            '#/certificates': 'program.view',
+            '#/finance': 'finance.view',
+            '#/analytics': 'report.view',
+            '#/settings': 'settings.view'
+        }[action.link];
+
+        return needs ? session.can(needs) : true;
     }
 
     /* ========================================================= OWNER VARIANT */
 
+    /**
+     * ENH-301 — the Owner dashboard as a Quick Access Workspace.
+     *
+     * It was four stacked blocks of READING — KPIs, attention, insights,
+     * activity — with no navigation of its own, so the one screen the owner
+     * opens most often was the one screen that could not take her anywhere.
+     * Everything went through the tab bar and the More sheet.
+     *
+     * ORDER FOLLOWS THE THUMB. Today's Summary is read-only, so it sits at the
+     * top where the eye lands and no finger has to reach. Everything tappable
+     * is below it, filling the lower half of the screen a thumb actually
+     * covers: glance at the numbers, then act.
+     *
+     * INSIGHTS AND RECENT ACTIVITY ARE GONE. Both were browsing material that
+     * largely restated the KPIs above them, and between them they pushed every
+     * navigation target off the first screen — exactly the clutter this ticket
+     * exists to remove. Needs attention stays, because it is actionable rather
+     * than informational: overdue invoices, unmarked registers, applicants
+     * approved but not enrolled. Without it the owner would have to go hunting
+     * module by module for problems.
+     */
     ownerView(data) {
         return html`
-            ${this.kpiStrip(data.headline)}
+            ${this.todaySummary(data.headline)}
             ${this.attention(data.attention)}
-            ${this.insights(data)}
-            ${this.activity(data.activity)}
+            ${this.workspaceGroup('Quick actions', QUICK_ACTIONS)}
+            ${this.workspaceGroup('Daily operations', DAILY_OPERATIONS)}
+            ${this.workspaceGroup('Management', MANAGEMENT)}
+        `;
+    }
+
+    /**
+     * The numbers. Deliberately reuses kpiStrip() rather than inventing a
+     * "summary" component — it already scrolls horizontally, already links
+     * each figure to the module behind it, and already handles a failed
+     * panel. The heading was the entire difference.
+     */
+    todaySummary(headline) {
+        return this.kpiStrip(headline);
+    }
+
+    /**
+     * One navigation group, built from .m-quick — the same card Quick actions
+     * already used — so the workspace is one visual idea repeated three times
+     * rather than three new ones.
+     *
+     * A group whose every entry is barred by capability renders nothing at
+     * all, heading included: an empty "Management" heading tells the reader
+     * only that something exists which they cannot have.
+     */
+    workspaceGroup(title, actions) {
+        const visible = actions.filter((action) => this.allowed(action));
+        if (!visible.length) return '';
+
+        return html`
+            <h2 class="m-section-label" style="margin-top:20px;">${title}</h2>
+            <div class="m-actions m-actions-grid">
+                ${visible.map((action) => html`
+                    <a class="m-card m-quick" href="${action.link}">
+                        <span class="m-quick-icon" style="background:${action.bg};color:${action.color};">
+                            ${raw(icon(action.icon, { size: 17 }))}
+                        </span>
+                        <span class="m-quick-label">${action.label}</span>
+                    </a>
+                `)}
+            </div>
         `;
     }
 

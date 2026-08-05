@@ -1465,3 +1465,15 @@ body {
     background: rgba(240, 145, 124, 0.18);
     color: var(--v3-negative);
 }
+
+/* ENH-301 — the Owner workspace's navigation grids.
+   Two columns, because a one-word label needs nothing wider and two columns
+   put twice as many destinations inside the thumb's reach before a scroll.
+   .m-actions is otherwise a row of buttons, so the grid is opt-in rather than
+   changing it for every existing caller. */
+.m-actions-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+}
+.m-actions-grid .m-quick { padding: 12px; }
