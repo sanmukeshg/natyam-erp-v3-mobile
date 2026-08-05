@@ -308,6 +308,20 @@ export default class MobileDashboardPage extends Page {
         `;
     }
 
+    /**
+     * Each item is one tappable card rather than a card wrapping a button.
+     *
+     * The button underneath was the taller half of every item, and it led
+     * exactly where the card above it was already about — four of them stacked
+     * pushed the whole workspace past the fold on a phone. Dropping it halves
+     * the block and makes the target bigger, since the whole card now takes
+     * the tap instead of a strip inside it.
+     *
+     * The action wording stays, as a label under the detail. It is the only
+     * part that says WHERE the card goes — "154 overdue invoices" alone does
+     * not promise Chase payments — so it survives the button that used to
+     * carry it.
+     */
     attention(items) {
         if (panelFailed(items)) return '';
 
@@ -315,16 +329,15 @@ export default class MobileDashboardPage extends Page {
             <h2 class="m-section-label">Needs attention</h2>
             <div class="m-stack">
                 ${items?.length ? items.map((item) => html`
-                    <div class="m-card m-attn">
-                        <div class="m-attn-head">
-                            <span class="m-dot" data-severity="${item.severity}"></span>
-                            <div style="flex:1;min-width:0;">
-                                <div class="m-attn-title">${item.title}</div>
-                                <div class="m-attn-detail">${item.detail}</div>
-                            </div>
+                    <a class="m-card m-attn" href="${item.link}">
+                        <span class="m-dot" data-severity="${item.severity}"></span>
+                        <div style="flex:1;min-width:0;">
+                            <div class="m-attn-title">${item.title}</div>
+                            <div class="m-attn-detail">${item.detail}</div>
+                            <div class="m-attn-action">${item.action}</div>
                         </div>
-                        <a class="m-btn m-btn-ghost m-btn-block" href="${item.link}">${item.action}</a>
-                    </div>
+                        <span class="m-attn-chev">${raw(icon('chevron-right', { size: 16 }))}</span>
+                    </a>
                 `) : html`<div class="m-card m-empty">Nothing needs attention.</div>`}
             </div>
         `;
