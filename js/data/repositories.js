@@ -60,3 +60,22 @@ export {
 /* ---- Platform ---- */
 export { settings$ } from './settings.repository.firestore.js';
 export { notifications$ } from './notifications.repository.firestore.js';
+
+/* ---- Public experience (Parent Portal, Stage 0) ----
+   The only two collections in this app a caller with no Firebase identity
+   touches. `siteContent` holds every public-facing section, authored in the
+   Desktop ERP's Settings → Website Content module and read here; `enquiries`
+   is submitted before an account exists.
+
+   Neither is a view onto an operational collection. Website Content is
+   maintained by hand and is deliberately independent of Branch, Batch and
+   Curriculum management — a simplicity-for-duplication trade the school chose
+   knowingly — so /branches, /batches and the rest stay closed exactly as they
+   were. */
+export { siteContent$ } from './siteContent.repository.firestore.js';
+export { enquiries$ } from './enquiries.repository.firestore.js';
+
+/* A parent's onboarding marker — "have they been here before?" — created when
+   they first submit an application or enquiry. Not an identity and not a
+   guardianship claim; see parent.service.js for why those stay separate. */
+export { parentProfiles$ } from './parentProfiles.repository.firestore.js';

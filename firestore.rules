@@ -82,14 +82,50 @@
 // at all. `update` stays denied
 // wherever it already was (auditLog stays append-only otherwise).
 //
+// Parent Portal Stage 0 added the first two collections in this file that a
+// caller with NO Firebase identity at all can touch — `siteContent` (read)
+// and `enquiries` (create). Every other collection here, including the
+// guardian widening above, still requires request.auth != null at minimum.
+// Both are shaped so that being public costs nothing:
+//
+//   siteContent  Every public-facing section: About Natyam, the Founder,
+//                Courses, Branches, Batch Timings, and later Gallery,
+//                Events, FAQ, Contact, Testimonials, Website Home and SEO.
+//                One document per section. Authored in exactly one place —
+//                the Desktop ERP's Settings → Website Content module — and
+//                read by natyam-mobile and, later, the Natyam website.
+//
+//                Note what this collection is NOT: it is not derived from
+//                /branches, /batches or the curriculum, and nothing writes
+//                to it automatically. The school maintains it by hand, and
+//                accepts that a branch address lives in two places, in
+//                exchange for one moving part instead of a projection layer.
+//                Those operational collections stay closed exactly as they
+//                are — which is also why none of this had to open them:
+//                rules permit or deny a whole document and cannot hide
+//                fields, so publishing /batches would have published
+//                capacity, enrolment counts and teacher assignments along
+//                with a class time.
+//
+//   enquiries    A prospective parent's "contact me" record, created before
+//                they have any account. Create is open, which is a write
+//                surface for the whole internet, so it is the one rule in
+//                this file that validates the document field by field: an
+//                exact key set, type and length caps on every value, and a
+//                forced status/source/createdBy. There is no rate limit at
+//                this layer — Firestore rules cannot express one — so spam
+//                is a triage problem for Reception, not a data-integrity
+//                one. Nothing else in the database is reachable from it.
+//
 // Everything outside `users`/`meta`/`sessions`/`students`/`admissions`/
 // `attendance`/`classSessions`/`programs`/`certificates`/`batches`/`staff`/
 // `feePlans`/`invoices`/`payments`/`ledgerEntries`/`expenses`/`salaries`/
 // `documents`/`admissionDrafts`/`notifications`/`branches`/`academicYears`/
-// `curricula`/`curriculumLevels`/`holidays`/`auditLog` is denied by
-// default. As of Milestone 24 every entity in the app is on Firestore —
-// no store is left on IndexedDB with no rules to protect it. The final
-// catch-all rule must stay last regardless.
+// `curricula`/`curriculumLevels`/`holidays`/`auditLog`/`siteContent`/
+// `parentProfiles`/
+// `enquiries` is denied by default. As of Milestone 24 every entity in the
+// app is on Firestore — no store is left on IndexedDB with no rules to
+// protect it. The final catch-all rule must stay last regardless.
 
 rules_version = '2';
 service cloud.firestore {
@@ -379,14 +415,59 @@ service cloud.firestore {
     }
 
     // Milestone 5 (see ADR-014, docs/migrations/ADMISSIONS_MODULE_MIGRATION.md).
+    // Parent Portal Stage 3. A prospective parent — signed in with Google,
+    // but with no /users doc and no linked student — submits their own
+    // admission application from natyam-mobile. They are not staff, so
+    // canManageAdmissions() can never be true for them; this is the only
+    // other way into this collection.
+    //
+    // The four server-forced values are what make it safe. `applicationNo`
+    // MUST be null: the official NAT/APP number is allocated by the Desktop
+    // ERP at beginReview() from the staff-gated /settings sequence counter,
+    // and an applicant must not be able to claim one. `status` must be
+    // `submitted`, so nobody can self-approve or self-enrol. `source` marks
+    // it as parent-submitted so Reception can tell it from a walk-in. And
+    // `submittedByEmail` must equal the caller's own verified token claim,
+    // which is what ties the row to them for the read rule below.
+    //
+    // Deliberately NOT validated here: the full application shape. Unlike
+    // /enquiries, this collection is also written by staff with a rich,
+    // evolving field set, and pinning an exact key set would break the
+    // desktop wizard on its next field addition. The boundary drawn is the
+    // one that matters — an applicant cannot forge a number, a status, or
+    // somebody else's identity.
+    function isSelfSubmittedApplication() {
+      let d = request.resource.data;
+      return hasEmailClaim()
+        && d.source == 'parent_portal'
+        && d.submittedByEmail == myEmail()
+        && d.status == 'submitted'
+        && d.applicationNo == null
+        && d.name is string && d.name.size() > 0 && d.name.size() <= 120
+        && d.guardianPhone is string && d.guardianPhone.size() >= 8
+        && d.guardianPhone.size() <= 20;
+    }
+
+    /** An applicant reading back one of their OWN submissions. */
+    function isMyOwnApplication() {
+      return hasEmailClaim()
+        && resource.data.source == 'parent_portal'
+        && resource.data.submittedByEmail == myEmail();
+    }
+
     match /admissions/{admissionId} {
       // Every role has admission.view — Administrator, Owner & Accountant,
-      // Teacher & Reception, Viewer alike.
-      allow read: if isProvisionedActiveUser();
+      // Teacher & Reception, Viewer alike. Widened for Stage 3 so an
+      // applicant can track their own application's status, and ONLY their
+      // own: the equality on submittedByEmail is the same single-field shape
+      // the guardian rules on /students already use, so the matching query in
+      // admissions.service.js can be served without exposing the collection.
+      allow read: if isProvisionedActiveUser() || isMyOwnApplication();
 
       // Only submit() requires admission.edit, held by Administrator and
-      // Teacher & Reception only.
-      allow create: if canManageAdmissions();
+      // Teacher & Reception only — plus a prospective parent submitting their
+      // own application, under the constraints above.
+      allow create: if canManageAdmissions() || isSelfSubmittedApplication();
 
       // Every other write (review/approve/reject/reopen/enrol) requires
       // either admission.edit or admission.approve — the union of both is
@@ -818,6 +899,170 @@ service cloud.firestore {
       // audit.purge and data.restore, both reserved; update stays
       // permanently denied.
       allow update: if false;
+      allow delete: if isAdministrator();
+    }
+
+    /* ======================================================================
+       WEBSITE CONTENT & ENQUIRIES — the public surface.
+       ====================================================================== */
+
+    // Every public-facing section: About Natyam, the Founder, Courses,
+    // Branches, Batch Timings, and later Gallery, Events, FAQ, Contact,
+    // Testimonials, Website Home and SEO. One document per key (js/data/
+    // siteContent.repository.firestore.js — the doc id IS the key, same shape
+    // as /settings above).
+    //
+    // Maintained by hand in exactly one place: the Desktop ERP's Settings →
+    // Website Content module. Read by natyam-mobile and, later, the Natyam
+    // website. Nothing writes here automatically, and this collection is not
+    // derived from /branches, /batches or the curriculum — the school
+    // maintains public copy separately from operational records by choice,
+    // trading a little duplication for an architecture with one moving part.
+    //
+    // `read: if true` is the whole point of the collection. That is also why
+    // none of the operational collections had to be opened: a rule can only
+    // allow or deny an ENTIRE document and cannot filter fields, so
+    // publishing /branches or /batches would have published every batch's
+    // capacity, enrolment count and teacher assignment alongside the address
+    // and class time a parent came for. Their rules are untouched.
+    //
+    // Nothing here is ever a secret: if a value would not go on a public web
+    // page, it does not belong in this collection.
+    //
+    // Writes need settings.edit — Administrator and Owner — the same
+    // capability that already governs the institute's own details, since this
+    // is the same kind of thing: the school's public description of itself.
+    // Delete is Administrator alone, matching every other reference-data
+    // collection above.
+
+    // The envelope, enforced lightly. Every document is { value, updatedAt },
+    // and `value.kind` is the discriminator that tells any consumer — this
+    // app, and the Natyam website later — how to render it without knowing
+    // anything else about the key. Pinning those two here means the website
+    // can trust the shape rather than defending against it, and a malformed
+    // write is rejected at the source instead of surfacing as a blank public
+    // page nobody notices.
+    //
+    // Deliberately NOT stricter than that. The content inside `value` is
+    // prose, lists and image URLs that the school edits over time; a rule
+    // that enumerated block types would have to be redeployed every time a
+    // page gained a paragraph style. Structure is enforced here, content is
+    // whitelisted on read by publicContent.service.js's normaliser.
+    // `updatedAt` / `updatedBy` / `updatedByName` are system-managed audit
+    // metadata, stamped by siteContent.repository.firestore.js's set() and
+    // never typed by anyone. They sit at DOCUMENT level, outside `value`,
+    // which is what keeps them off every public surface without any
+    // filtering: natyam-mobile and the website read `value` and never see
+    // them. They are named in the key set here so the write is not rejected;
+    // their contents are not constrained, since a caller who could forge them
+    // could already write the content itself.
+    function isSiteContentEnvelope() {
+      let d = request.resource.data;
+      return d.keys().hasOnly(['value', 'updatedAt', 'updatedBy', 'updatedByName'])
+        && d.value is map
+        && d.value.kind in ['page', 'list'];
+    }
+
+    match /siteContent/{key} {
+      allow read: if true;
+      allow create, update: if canManageSettings() && isSiteContentEnvelope();
+      allow delete: if isAdministrator();
+    }
+
+    // A prospective parent's enquiry, submitted with no account (Stage 2's
+    // "Enquiry must be available without login"). Reception follows it up
+    // from the Desktop ERP.
+    //
+    // This validator is the reason `allow create: if true` is safe to write.
+    // It pins the document to an EXACT key set — hasOnly() and hasAll() over
+    // the same list, so an unexpected field is rejected rather than merely
+    // ignored — types and length caps on every value, and server-forced
+    // status/source/createdBy that a caller cannot choose. The three
+    // staff-only fields must be present and null at create: a submitter
+    // cannot arrive pre-triaged, pre-assigned or pre-annotated.
+    //
+    // What this deliberately does NOT do: prove the phone number is real,
+    // prove a human sent it, or limit how many arrive. None of those are
+    // expressible in this file. The exposure is bounded instead — a spammer
+    // can fill this one collection with junk that Reception deletes, and can
+    // reach nothing else in the database through it.
+    function isPublicEnquiry() {
+      let d = request.resource.data;
+      let keys = ['name', 'phone', 'email', 'message', 'branchId',
+                  'courseInterest', 'status', 'source', 'createdAt',
+                  'createdBy', 'handledBy', 'handledOn', 'note'];
+      return d.keys().hasOnly(keys) && d.keys().hasAll(keys)
+        // Required, and bounded. The lower bounds are the same ones
+        // enquiry.service.js checks client-side; both have to agree or a
+        // legitimate submission fails with a permissions error instead of a
+        // field message.
+        && d.name is string && d.name.size() >= 2 && d.name.size() <= 120
+        && d.phone is string && d.phone.size() >= 8 && d.phone.size() <= 20
+        && d.createdAt is string && d.createdAt.size() <= 40
+        // Server-forced. A new enquiry is always new, always public, and
+        // always attributed to no one.
+        && d.status == 'new'
+        && d.source == 'public'
+        && d.createdBy == 'public'
+        // Optional, and null when not given — the repository always writes
+        // the key, so the shape stays stable for the ERP reading it.
+        && (d.email == null || (d.email is string && d.email.size() <= 160))
+        && (d.message == null || (d.message is string && d.message.size() <= 1000))
+        && (d.branchId == null || (d.branchId is string && d.branchId.size() <= 64))
+        && (d.courseInterest == null || (d.courseInterest is string && d.courseInterest.size() <= 120))
+        // Reception's own fields. Never the submitter's to set.
+        && d.handledBy == null && d.handledOn == null && d.note == null;
+    }
+
+    // A parent's own onboarding marker. Created the first time they finish
+    // something real — submitting an admission application or an enquiry —
+    // and read on every later sign-in to decide whether they still need the
+    // Welcome screen.
+    //
+    // WHAT THIS IS NOT. It is not an identity, not a role, and not a claim to
+    // be any student's guardian. Which experience someone gets is decided
+    // entirely by the staff/guardian/applicant chain in js/app.js, exactly as
+    // before; this document only answers "have they been here before?".
+    // Holding one grants no access to anything — a parent with a profile and
+    // no linked student still reads no student, fee or attendance record,
+    // because those collections' rules are untouched and gate on guardianship,
+    // not on this.
+    //
+    // Keyed by lowercased email, the same convention /users uses, so a caller
+    // reaches exactly their own document by path with no query.
+    match /parentProfiles/{profileId} {
+      // Their own, or any provisioned staff member — Reception answering "has
+      // this family been in touch before?" is a reasonable desk question.
+      allow read: if isOwnDoc(profileId) || isProvisionedActiveUser();
+
+      // Only ever their own, and only their own email inside it. There is no
+      // field here worth forging, but pinning the id to the caller keeps one
+      // person from seeding a document under someone else's address.
+      allow create, update: if isOwnDoc(profileId)
+        && request.resource.data.email == myEmail();
+
+      // No delete path exists in the app. A profile is a fact about the past.
+      allow delete: if isAdministrator();
+    }
+
+    match /enquiries/{enquiryId} {
+      // Every role has admission.view, and an enquiry is the stage before an
+      // admission — so read matches the /admissions block above exactly.
+      allow read: if isProvisionedActiveUser();
+
+      allow create: if isPublicEnquiry();
+
+      // Triage — marking one contacted, converted or closed, and recording
+      // who dealt with it. Same gate as writing to /admissions, since this
+      // is the same desk doing the same job one step earlier. Like that
+      // block, this does not replicate a field-by-field status machine
+      // server-side; it draws the boundary that matters — a Viewer, and the
+      // public, can never write here.
+      allow update: if canManageAdmissions() || canApproveAdmissions();
+
+      // Deleting spam is a real operation on this collection, unlike every
+      // other one in this file. Administrator alone, matching the delete
+      // gate used everywhere else here.
       allow delete: if isAdministrator();
     }
 

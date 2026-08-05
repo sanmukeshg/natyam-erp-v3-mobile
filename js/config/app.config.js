@@ -22,7 +22,7 @@ export const APP = Object.freeze({
     // 3.0.0, not a continuation of 2.26.5: v3 is a new application built by
     // splitting the reference project in two, with a mobile-first staff
     // experience. See CHANGELOG.md and MIGRATION_CHECKLIST.md.
-    version: '3.2.0',
+    version: '3.3.0',
     organisation: 'NATYAM — School of Kuchipudi',
     locale: 'en-IN',
     currency: 'INR',
@@ -350,6 +350,22 @@ export const ADMISSION_STATUS = Object.freeze({
     APPROVED:  'approved',
     ENROLLED:  'enrolled',
     REJECTED:  'rejected'
+});
+
+/* An enquiry is the stage before an admission: a prospective parent who has
+   asked to be contacted but has not applied, and who has no account of any
+   kind. Kept separate from ADMISSION_STATUS above rather than folded into it
+   — the two pipelines are followed up by the same desk but are not the same
+   record, and an enquiry that never converts is a normal outcome, not a
+   rejected application.
+
+   CONVERTED means an Admission was raised from it. The enquiry stays as it is
+   afterwards; nothing is moved or deleted. */
+export const ENQUIRY_STATUS = Object.freeze({
+    NEW:       'new',
+    CONTACTED: 'contacted',
+    CONVERTED: 'converted',
+    CLOSED:    'closed'
 });
 
 /* NATYAM has no Leave concept and no Holiday-in-attendance handling

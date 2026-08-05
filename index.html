@@ -6,9 +6,45 @@
     <title>Natyam ERP v3 — Mobile</title>
     <meta name="description" content="Natyam ERP v3 — mobile app for NATYAM, School of Kuchipudi.">
 
-    <meta name="theme-color" content="#2f2a6b" media="(prefers-color-scheme: light)">
-    <meta name="theme-color" content="#14141c" media="(prefers-color-scheme: dark)">
-    <meta name="color-scheme" content="light dark">
+    <!--
+      FULL-SCREEN PWA (Stage 6).
+
+      #3d1f11 is not an invented brand colour — it is the measured average of
+      the TOP of assets/img/brand/login-mobile-bg.jpg composited under v3.css's
+      own --v3-scrim, i.e. exactly what the artwork looks like where the status
+      bar sits. Matching it is what makes the status bar read as part of the
+      app rather than as a bar above it.
+
+      Previously #2f2a6b / #14141c — v2's indigo, left behind when v3 moved to
+      the warm terracotta shell. That mismatch was the visible "browser page
+      behind the status bar": an indigo strip over warm artwork.
+
+      One value, not a light/dark pair. The v3 mobile shell keeps white type on
+      the same photographic backdrop in both themes (see v3.css's LIGHT block,
+      which explains why its "light" variant is lighter glass rather than a
+      light theme), so a light-scheme status bar would be wrong in both.
+    -->
+    <meta name="theme-color" content="#3d1f11">
+    <meta name="color-scheme" content="dark">
+
+    <!--
+      iOS supports none of this through the manifest.
+      `apple-mobile-web-app-capable` is what makes an installed app run without
+      Safari's chrome at all, and `black-translucent` is what lets the app's own
+      background extend UNDER the status bar rather than sitting below an
+      opaque strip — the brief's "the application background must extend into
+      the safe area".
+
+      That is also exactly why v3.css's env(safe-area-inset-*) padding matters:
+      with black-translucent the web view owns those pixels, so without those
+      insets the app bar would render behind the clock.
+    -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Natyam">
+    <!-- The standardised replacement for Apple's prefixed flag. Both are
+         needed: iOS still reads only its own. -->
+    <meta name="mobile-web-app-capable" content="yes">
 
     <link rel="manifest" href="manifest.json">
     <link rel="icon" href="assets/icons/icon.svg" type="image/svg+xml">
@@ -18,6 +54,7 @@
     <link rel="stylesheet" href="assets/css/base.css">
     <link rel="stylesheet" href="assets/css/auth.css">
     <link rel="stylesheet" href="assets/css/v3.css">
+    <link rel="stylesheet" href="assets/css/public.css">
 
     <!--
       tokens.css still supplies the shared type scale, spacing grid, radii,
@@ -25,6 +62,13 @@
       bottom tab bar, glass cards) the staff screens are built from.
       components.css is deliberately not loaded — no migrated screen needs
       v2's opaque-surface desktop component styles.
+
+      public.css is the Public Experience layer, and it is loaded here rather
+      than lazily (the way app.js fetches the portal's stylesheets on a
+      guardian sign-in) for one reason: since Stage 1 the public home is the
+      FIRST paint for any signed-out visitor, so fetching its stylesheet after
+      boot would show a flash of unstyled content on the app's own front door.
+      It is small, and it reuses v3.css rather than restating it.
 
       The inline script below paints the stored theme before the stylesheets
       and JS finish loading: without it the app paints light, then repaints

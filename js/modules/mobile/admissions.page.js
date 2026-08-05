@@ -44,6 +44,16 @@ import { formModal } from '../../ui/form.js';
 
 const FILTERS = [
     { key: null, label: 'All' },
+    // Parent Portal Stage 4. A SOURCE, not a status — handled separately in
+    // visibleRows() rather than passed to listApplications(). Second in the
+    // list because a self-service application is the one kind nobody is
+    // standing at the desk to chase: a walk-in announces itself, this only
+    // exists in the queue.
+    //
+    // Recognition only. Mapping a parent's preferred branch to an ERP branch
+    // is Desktop-only by decision — that is an administrative task, and this
+    // page deliberately offers no branch editing.
+    { key: 'source:parent', label: 'From parents' },
     { key: ADMISSION_STATUS.SUBMITTED, label: 'Submitted' },
     { key: ADMISSION_STATUS.REVIEWING, label: 'Reviewing' },
     { key: ADMISSION_STATUS.APPROVED, label: 'Approved' },
@@ -78,7 +88,13 @@ export default class MobileAdmissionsPage extends Page {
             const branchId = session.branch();
             const [stats, rows] = await Promise.all([
                 pipeline(branchId),
-                listApplications(branchId, { status: this.filter })
+                // "From parents" is a source, not a status — passing it to the
+                // service's status filter would match nothing and silently
+                // empty the list. Applied in visibleRows() instead, so the
+                // query here asks for everything.
+                listApplications(branchId, {
+                    status: this.filter === 'source:parent' ? null : this.filter
+                })
             ]);
             if (this.disposed) return;
             this.stats = stats;
@@ -94,10 +110,18 @@ export default class MobileAdmissionsPage extends Page {
     }
 
     visibleRows() {
+        // Source filter applied here rather than in the service query, for the
+        // reason load() documents. `preferredBranch` joins the search fields
+        // because it may be the only branch a parent application carries —
+        // searching "Kondapur" should find one.
+        const bySource = this.filter === 'source:parent'
+            ? this.rows.filter((row) => row.source === 'parent_portal')
+            : this.rows;
+
         const term = this.search.trim().toLowerCase();
-        if (!term) return this.rows;
-        return this.rows.filter((row) =>
-            [row.name, row.guardianName, row.guardianPhone, row.applicationNo]
+        if (!term) return bySource;
+        return bySource.filter((row) =>
+            [row.name, row.guardianName, row.guardianPhone, row.applicationNo, row.preferredBranch]
                 .some((value) => String(value || '').toLowerCase().includes(term)));
     }
 
@@ -141,7 +165,17 @@ export default class MobileAdmissionsPage extends Page {
                         <span class="m-student-main">
                             <span class="m-student-name">${row.name}</span>
                             <span class="m-student-meta">
-                                ${row.levelLabel || '—'}${
+                                ${
+                                    // Leads the meta line rather than sitting as a second
+                                    // trailing badge beside the status one. Two badges do
+                                    // not fit a 375px row — the same constraint that made
+                                    // the stalled signal replace the applied date below
+                                    // rather than join it — and .m-student-name is
+                                    // nowrap+ellipsis, so an inline chip there gets clipped
+                                    // by a long child's name. First in the meta line is the
+                                    // one place it is always readable.
+                                    row.source === 'parent_portal' ? 'From parent · ' : ''
+                                }${row.levelLabel || '—'}${
                                     // A stalled application shows how long it has waited
                                     // *instead of* when it arrived, not as well as: both
                                     // together overflow a 375px row and the ellipsis ate
@@ -217,6 +251,22 @@ export default class MobileAdmissionsPage extends Page {
 
                 <div class="m-profile-body">
                     <div><span class="m-badge" data-admission="${app.status}">${statusLabel}</span></div>
+
+                    ${app.source === 'parent_portal' ? html`
+                        <div class="m-notice" data-tone="info">
+                            Submitted by the family through the Natyam app.${
+                                app.applicationNo ? '' : ' A NAT/APP number is issued when review begins.'
+                            }${
+                                // Recognition only — there is no branch picker on mobile by
+                                // decision. Naming the preference here is what lets whoever
+                                // opens this on a phone know the application is unassigned
+                                // and why, without offering an edit that belongs at a desk.
+                                app.preferredBranch && !app.branchId
+                                    ? ` The family asked for ${app.preferredBranch}; assign a branch in the Desktop ERP.`
+                                    : ''
+                            }
+                        </div>
+                    ` : ''}
 
                     ${possibleDuplicates?.length ? html`
                         <div class="m-notice" data-tone="caution">

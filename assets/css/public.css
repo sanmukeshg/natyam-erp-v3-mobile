@@ -1,0 +1,296 @@
+/* ==========================================================================
+   Natyam ERP v3 — Mobile — Public Experience
+   --------------------------------------------------------------------------
+   The prospective-parent screens: Public Home, the informational pages, and
+   the Enquiry/Apply entries.
+
+   DELIBERATELY SMALL. v3.css already supplies the shell, the glass cards, the
+   app bar, the buttons, the fact tables and the empty states, and this layer
+   reuses every one of them as-is — .m-shell, .m-appbar, .m-card, .m-quick,
+   .m-facts, .m-btn, .m-empty. What is here is only what the staff app has no
+   equivalent for: a home hero, a pair of primary actions, a module list row,
+   and prose typography. Anything that could be a v3 class IS a v3 class;
+   re-styling one here would make the two halves of the same app drift.
+
+   LOADED FOR EVERYONE, from index.html rather than lazily like the portal's
+   stylesheets. The public home is now the first paint for any signed-out
+   visitor, so a lazily-fetched stylesheet would show a flash of unstyled
+   content on the app's own front door. It is a few hundred lines against
+   v3.css's 1,400.
+
+   The `p-` prefix marks this layer, matching `m-` for the v3 mobile layer.
+   ========================================================================== */
+
+/* ----------------------------------------------------------------- SHELL -- */
+
+/* The public shell has no bottom tab bar, so its content column runs to the
+   bottom of the screen and has to keep clear of the home indicator itself —
+   in the staff app that inset belongs to the tab bar's margin (see v3.css's
+   own note on .m-tabbar). */
+.p-shell .m-content {
+    padding-bottom: calc(var(--space-6) + var(--v3-safe-bottom));
+}
+
+/* The back button sits before the title, so the title block must not also
+   claim the left edge's spacing. */
+.p-appbar .p-back { margin-left: calc(var(--space-1) * -1); }
+
+/* ------------------------------------------------------------------ HERO -- */
+
+.p-hero {
+    padding: var(--space-6) 0 var(--space-5);
+    text-align: center;
+}
+
+.p-hero-title {
+    margin: 0 0 var(--space-2);
+    font-size: var(--text-2xl);
+    font-weight: var(--weight-bold);
+    line-height: 1.2;
+    color: var(--v3-title);
+    text-shadow: var(--v3-title-shadow);
+}
+
+.p-hero-sub {
+    margin: 0 auto;
+    max-width: 30ch;
+    font-size: var(--text-sm);
+    line-height: 1.5;
+    color: var(--v3-sub);
+}
+
+/* --------------------------------------------------------------- ACTIONS -- */
+
+/* Apply Now and Enquiry, at full width and above everything informational —
+   the brief is explicit that a parent who arrives already decided must not
+   have to scroll past an essay to act. */
+.p-actions {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    margin-bottom: var(--space-6);
+}
+
+/* .m-btn-block already sets `margin-top: 10px` for stacked use inside a card;
+   the flex gap above is doing that job here, so it is cancelled to keep the
+   two buttons evenly spaced rather than 10px + gap apart. */
+.p-actions .m-btn-block { margin-top: 0; }
+
+.p-actions .m-btn { gap: var(--space-2); }
+
+/* The one deliberately loud control in the public app. Everything else on
+   these screens is glass over artwork; Apply Now is solid, so it reads as the
+   primary action at a glance rather than as one more translucent card. */
+.p-action-primary {
+    background: var(--v3-terracotta);
+    border-color: transparent;
+    color: #fff;
+    font-weight: var(--weight-semibold);
+}
+.p-action-primary:hover { background: var(--v3-terracotta-deep); color: #fff; }
+
+/* --------------------------------------------------------- MODULE LIST --- */
+
+.p-module-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;   /* lets a long blurb ellipsis instead of stretching the row */
+    flex: 1;
+}
+
+.p-module-blurb {
+    font-size: var(--text-xs);
+    line-height: 1.4;
+    color: var(--v3-muted);
+}
+
+.p-module-icon {
+    background: rgba(255, 255, 255, 0.13);
+    color: var(--v3-name);
+}
+
+.p-module-chev { flex-shrink: 0; color: var(--v3-muted); display: grid; place-items: center; }
+
+/* A module whose content is not published yet is shown, not hidden — the menu
+   is the app's shape and should not depend on whether copy has been written —
+   but it is not a link, so it must not look tappable either. */
+.m-quick[data-empty] { opacity: 0.55; }
+.m-quick[data-empty] .p-module-blurb { font-style: italic; }
+
+/* ------------------------------------------------------------ PAGE HEAD -- */
+
+.p-page-head { padding: var(--space-5) 0 var(--space-4); }
+
+.p-page-title {
+    margin: 0 0 var(--space-2);
+    font-size: var(--text-xl);
+    font-weight: var(--weight-bold);
+    line-height: 1.25;
+    color: var(--v3-title);
+    text-shadow: var(--v3-title-shadow);
+}
+
+.p-page-sub {
+    margin: 0;
+    font-size: var(--text-sm);
+    line-height: 1.5;
+    color: var(--v3-sub);
+}
+
+/* --------------------------------------------------------------- PROSE --- */
+
+/* Editorial pages — About, the Founder, and later Vision/Mission/Contact.
+   Long-form reading, so the measure and leading are looser than anywhere in
+   the staff app, where every screen is scanned rather than read. */
+.p-prose { padding: var(--space-5); }
+
+.p-prose-heading {
+    margin: var(--space-5) 0 var(--space-2);
+    font-size: var(--text-md);
+    font-weight: var(--weight-semibold);
+    color: var(--v3-name);
+}
+.p-prose-heading:first-child { margin-top: 0; }
+
+.p-prose-text {
+    margin: 0 0 var(--space-4);
+    font-size: var(--text-sm);
+    line-height: 1.65;
+    color: var(--v3-name);
+}
+.p-prose-text:last-child { margin-bottom: 0; }
+
+.p-prose .m-facts { margin-top: var(--space-4); }
+
+/* --------------------------------------------------------------- FIGURE -- */
+
+.p-figure { margin: 0 0 var(--space-4); }
+
+.p-figure-img {
+    display: block;
+    width: 100%;
+    height: auto;
+    border-radius: var(--v3-radius-item);
+    /* Published images are supplied by whoever writes the content and are not
+       art-directed for this layout, so a portrait is boxed to a predictable
+       height rather than being allowed to push the prose off the screen. */
+    max-height: 60vh;
+    object-fit: cover;
+}
+
+.p-figure-cap {
+    margin: var(--space-2) 0 0;
+    font-size: var(--text-xs);
+    line-height: 1.45;
+    color: var(--v3-muted);
+    text-align: center;
+}
+
+/* ----------------------------------------------------------- LIST ITEMS -- */
+
+/* Courses, Branches, Batch Timings — and later Gallery, Events, FAQ,
+   Testimonials, Blog. One rule set for all of them, because they are one
+   shape (see publicContent.config.js's ITEM). */
+.p-item { padding: var(--space-4); }
+
+.p-item .m-card-title { margin: 0; }
+.p-item .m-card-meta { margin: 2px 0 0; }
+
+.p-item-body {
+    margin: var(--space-3) 0 0;
+    font-size: var(--text-sm);
+    line-height: 1.6;
+    color: var(--v3-name);
+}
+
+.p-item .m-facts { margin-top: var(--space-3); }
+
+.p-item-img {
+    display: block;
+    width: calc(100% + var(--space-4) * 2);
+    margin: calc(var(--space-4) * -1) calc(var(--space-4) * -1) var(--space-4);
+    height: 180px;
+    object-fit: cover;
+    /* Bleeds to the card's edge, so the top corners follow the card's radius
+       and the bottom two stay square against the text below. */
+    border-radius: var(--v3-radius-card) var(--v3-radius-card) 0 0;
+}
+
+/* ---------------------------------------------------------------- WIDE --- */
+
+/* The public screens are the only part of this app a person is likely to open
+   on a tablet or a desktop browser — a shared link opens wherever it is
+   tapped, unlike the staff app, which is reached deliberately on a phone. The
+   column is capped so lines stay readable rather than running the full width
+   of a laptop. */
+@media (min-width: 700px) {
+    .p-shell .m-content {
+        width: 100%;
+        max-width: 640px;
+        margin: 0 auto;
+    }
+    .p-actions { flex-direction: row; }
+    .p-actions .m-btn { flex: 1; }
+}
+
+/* ==========================================================================
+   INSTALL DIALOG
+   --------------------------------------------------------------------------
+   Shown once after sign-in, on top of whichever shell is mounted — so it
+   reuses .m-sheet-scrim's wash and .m-card's glass rather than introducing a
+   second modal language for a dialog that appears at most once a month.
+   ========================================================================== */
+
+.pwa-scrim {
+    position: fixed; inset: 0; z-index: 90;
+    display: grid; place-items: end center;
+    padding: var(--space-4);
+    padding-bottom: calc(var(--space-4) + var(--v3-safe-bottom));
+}
+
+/* Bottom-anchored rather than centred: this appears unprompted, and a sheet
+   rising from the bottom reads as "an offer" where a centred modal reads as
+   "an error you must deal with". It is also where a thumb already is. */
+.pwa-card {
+    width: 100%; max-width: 420px;
+    padding: var(--space-5);
+    text-align: center;
+}
+
+.pwa-mark {
+    width: 46px; height: 46px; margin: 0 auto var(--space-3);
+    display: grid; place-items: center;
+    border-radius: var(--v3-radius-item);
+    background: rgba(255, 255, 255, 0.13);
+    color: var(--v3-name);
+}
+
+.pwa-title {
+    margin: 0 0 var(--space-2);
+    font-size: var(--text-md); font-weight: var(--weight-semibold);
+    color: var(--v3-name);
+}
+
+.pwa-body {
+    margin: 0 0 var(--space-5);
+    font-size: var(--text-sm); line-height: 1.55;
+    color: var(--v3-muted);
+}
+
+.pwa-steps {
+    margin: 0 0 var(--space-5); padding-left: 1.2em;
+    text-align: left;
+    font-size: var(--text-sm); line-height: 1.7;
+    color: var(--v3-name);
+}
+
+.pwa-actions { display: flex; flex-direction: column; gap: var(--space-2); }
+.pwa-actions .m-btn-block { margin-top: 0; }
+
+/* "Not Now" leads on a phone — the primary action sits nearest the thumb, and
+   an unprompted offer should never make refusing it the harder reach. */
+@media (min-width: 480px) {
+    .pwa-actions { flex-direction: row-reverse; }
+    .pwa-actions .m-btn { flex: 1; }
+}

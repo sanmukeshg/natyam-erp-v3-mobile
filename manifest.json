@@ -5,9 +5,10 @@
     "start_url": "./index.html",
     "scope": "./",
     "display": "standalone",
+    "display_override": ["standalone"],
     "orientation": "portrait",
-    "background_color": "#f7f6f3",
-    "theme_color": "#2f2a6b",
+    "background_color": "#3d1f11",
+    "theme_color": "#3d1f11",
     "categories": ["education", "productivity", "business"],
     "icons": [
         { "src": "assets/icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },

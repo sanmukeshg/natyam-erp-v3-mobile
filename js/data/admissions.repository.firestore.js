@@ -169,6 +169,107 @@ class FirestoreAdmissionRepository {
     }
 
     /**
+     * A prospective parent submitting their OWN application (Parent Portal
+     * Stage 3). Separate from create() above for two reasons, both hard
+     * requirements rather than preferences:
+     *
+     *  - NO AUDIT ROW. create() awaits writeAuditRow(), which writes to
+     *    /auditLog behind `isProvisionedActiveUser()`. An applicant has no
+     *    /users document and never satisfies that, so the audit write throws
+     *    AFTER addDoc() has already succeeded — the application exists and the
+     *    parent is told it failed. The document carries its own
+     *    submittedByEmail and createdAt, which is the provenance this row type
+     *    needs; the ERP writes a real audit entry when staff first act on it.
+     *
+     *  - EXPLICIT ATTRIBUTION. session.actorId() returns the string 'system'
+     *    with no hydrated session (js/core/session.js), which would file every
+     *    parent submission under the app's own internal attribution.
+     *
+     * The four server-forced values below are mirrored exactly by
+     * firestore.rules' isSelfSubmittedApplication(); the two must be edited
+     * together, or a legitimate submission fails with a permissions error
+     * instead of a field message.
+     *
+     * @param {object} data   A validated application (admissions.parent.service.js).
+     * @param {string} email  The caller's verified Google identity.
+     */
+    async createSelfSubmitted(data, email) {
+        const record = this.beforeSave({ ...data });
+
+        // NOT this.validate(), which requires branchId — and a prospective
+        // parent cannot supply one. /branches is staff-gated, and the public
+        // Branches page is hand-written Website Content that deliberately
+        // carries no branch ids (decoupling those was an explicit decision).
+        // So the parent names the branch they want as free text
+        // (`preferredBranch`) and Reception attaches the real branchId when
+        // they review, exactly as they allocate the NAT/APP number. A parent
+        // supplies intent; staff supply the ERP linkage.
+        if (!record.name) throw new Error('The applicant needs a name.');
+        if (!record.guardianPhone) throw new Error('A parent or guardian contact number is required.');
+        if (!record.level) throw new Error('Choose a starting level.');
+
+        delete record.id;
+
+        const at = nowISO();
+
+        const full = {
+            ...record,
+            // Server-forced, and matched by the rules. `applicationNo` stays
+            // null until the Desktop ERP allocates NAT/APP from the
+            // staff-gated sequence when Reception begins review.
+            applicationNo: null,
+            status: ADMISSION_STATUS.SUBMITTED,
+            source: 'parent_portal',
+            submittedByEmail: email,
+
+            createdAt: at, createdBy: email,
+            updatedAt: at, updatedBy: email,
+            deletedAt: null,
+            searchKey: searchKeyOf(record)
+        };
+
+        const ref = await addDoc(admissionsCollection, full);
+        return { id: ref.id, ...full };
+    }
+
+    /**
+     * Every application one identity has submitted, newest first.
+     *
+     * A single-field equality query on exactly the field firestore.rules'
+     * isMyOwnApplication() compares — the same shape the guardian rules on
+     * /students already rely on, so it is servable without opening the
+     * collection to the caller.
+     */
+    async mine(email) {
+        if (!email) return [];
+
+        // BOTH filters are required, and the `source` one is not redundant.
+        //
+        // firestore.rules' isMyOwnApplication() tests two things on the
+        // document: `source == 'parent_portal'` AND `submittedByEmail ==
+        // myEmail()`. For a LIST query Firestore does not evaluate the rule
+        // per document — it requires the query itself to be provably confined
+        // to documents the rule allows. A query filtering on only one of the
+        // two conditions cannot be proven safe, so Firestore rejects the whole
+        // query with permission-denied even when every document it would have
+        // returned was readable.
+        //
+        // That is exactly what broke the My Applications screen: the read
+        // failed outright and the page showed its "could not load" state. The
+        // query and the rule have to name the same fields; if either changes,
+        // the other must too.
+        const snap = await getDocs(query(
+            admissionsCollection,
+            where('source', '==', 'parent_portal'),
+            where('submittedByEmail', '==', email)
+        ));
+        return snap.docs
+            .map((d) => ({ id: d.id, ...d.data() }))
+            .filter(visible)
+            .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+    }
+
+    /**
      * MIGRATION USE ONLY — not called by any normal application code path.
      * Writes a Firestore document from a legacy IndexedDB record while
      * preserving its original audit metadata and `applicationNo`, rather

@@ -206,19 +206,99 @@ export async function updateApplication(id, changes) {
     return admissions$.update(id, changes);
 }
 
-/** Moves an application into review. Records who picked it up. */
-export async function beginReview(id) {
+/**
+ * Moves an application into review. Records who picked it up.
+ *
+ * ALSO THE SINGLE PLACE A PARENT-SUBMITTED APPLICATION IS NORMALISED into
+ * something the rest of the pipeline can work with. A self-service
+ * application (Parent Portal Stage 3) arrives deliberately incomplete in two
+ * ways, and both are closed here — at the first moment a member of staff
+ * touches it, which is the earliest point either can be decided:
+ *
+ *  - `applicationNo` is null. The official NAT/APP number comes from the
+ *    staff-gated /settings sequence, which a parent cannot and must not
+ *    allocate. It is issued here so there is exactly ONE numbering mechanism
+ *    in the product, and no way to claim a number from outside.
+ *
+ *  - `branchId` is null, with only a `preferredBranch` NAME the parent chose
+ *    from the published Website Content branches. Reception maps that to a
+ *    real Branch record.
+ *
+ * NEITHER IS ALLOWED TO BLOCK THE REVIEW. The branch is optional: if the
+ * caller supplies none, or the parent's preference matches no ERP branch, the
+ * application still moves to `reviewing` and the branch is settled later —
+ * enrolApplicant() already requires a real batch (and takes its branch from
+ * that batch), so nothing downstream can quietly proceed without one. A
+ * review that refused to start because a family typed a branch name the
+ * school no longer uses would be a worse failure than an unassigned row.
+ *
+ * Idempotent on numbering: an application that already has a number keeps it,
+ * so a walk-in taken at the desk is untouched by any of this.
+ *
+ * @param {string} id
+ * @param {object} [options]
+ * @param {string} [options.branchId]  The ERP branch Reception mapped the
+ *   parent's `preferredBranch` to. Optional by design.
+ */
+export async function beginReview(id, { branchId = null } = {}) {
     session.require('admission.edit', 'review an application');
 
     const admission = await admissions$.findOrFail(id);
     if (admission.status !== ADMISSION_STATUS.SUBMITTED) {
         throw new Error(`This application is ${statusLabel(admission.status)}, not awaiting review.`);
     }
-    return admissions$.update(id, {
+
+    const changes = {
         status: ADMISSION_STATUS.REVIEWING,
         reviewStartedOn: localDate(),
         reviewedBy: session.actorId()
-    });
+    };
+
+    // Only when missing. Allocating a second number for an application that
+    // already has one would burn a sequence value and change a reference a
+    // family may already have been given.
+    if (!admission.applicationNo) {
+        const year = academicYearOf().start;
+        const seq = await settings$.nextSequence('application');
+        changes.applicationNo = sequenceNumber('NAT/APP', year, seq);
+    }
+
+    // Only fills a gap; never overwrites a branch already on the record.
+    if (branchId && !admission.branchId) changes.branchId = branchId;
+
+    return admissions$.update(id, changes);
+}
+
+/**
+ * Suggests the ERP branch a parent's free-chosen `preferredBranch` name most
+ * likely means, so Reception confirms a pre-filled answer rather than reading
+ * the name and hunting for it in a list.
+ *
+ * A SUGGESTION, NOT A RESOLUTION. It never assigns anything by itself — the
+ * name came from hand-maintained Website Content that is deliberately
+ * decoupled from Branch Management, so the two lists can legitimately differ
+ * and a confident automatic match would eventually be confidently wrong.
+ * Returns null when nothing matches, which is a normal outcome and must not
+ * block the review.
+ *
+ * @param {string} preferredBranch  The published branch name the parent chose.
+ * @returns {Promise<object|null>} the matching active branch, or null.
+ */
+export async function suggestBranchFor(preferredBranch) {
+    const wanted = String(preferredBranch || '').trim().toLowerCase();
+    if (!wanted) return null;
+
+    const branches = await branches$.active().catch(() => []);
+
+    // Exact name first, then a containment match in either direction — the
+    // public list says "Natyam — Kondapur" where the ERP record may simply be
+    // "Kondapur", and vice versa.
+    return branches.find((b) => String(b.name || '').trim().toLowerCase() === wanted)
+        || branches.find((b) => {
+            const name = String(b.name || '').trim().toLowerCase();
+            return name && (name.includes(wanted) || wanted.includes(name));
+        })
+        || null;
 }
 
 /**
@@ -455,8 +535,30 @@ export async function eligibleBatches(admissionOrLevel, branchId = null) {
    ========================================================================== */
 
 /** Counts by stage, plus conversion rate — the admissions page header. */
+/**
+ * Is this application in scope for the branch currently being viewed?
+ *
+ * THE UNASSIGNED CASE IS THE POINT. A parent applying from natyam-mobile
+ * cannot supply a branchId — /branches is staff-gated and the public Branches
+ * page is hand-written Website Content carrying no ids — so a self-submitted
+ * application arrives with `branchId: null` and only a `preferredBranch`
+ * name. A plain equality filter would therefore hide every parent application
+ * the moment anyone selected a branch, which for an Owner who works with one
+ * branch selected means never seeing them at all.
+ *
+ * So an unassigned application is visible at EVERY branch until Reception
+ * assigns one. That is deliberately the safe direction to fail: an
+ * application shown to the wrong branch is noticed and reassigned; one shown
+ * to nobody is a family waiting for a call that never comes.
+ */
+function atBranch(application, branchId) {
+    if (!branchId) return true;
+    if (!application.branchId) return true;
+    return application.branchId === branchId;
+}
+
 export async function pipeline(branchId = null) {
-    const all = (await admissions$.all()).filter((a) => !branchId || a.branchId === branchId);
+    const all = (await admissions$.all()).filter((a) => atBranch(a, branchId));
     const count = (status) => all.filter((a) => a.status === status).length;
 
     const decided = count(ADMISSION_STATUS.ENROLLED) + count(ADMISSION_STATUS.REJECTED);
@@ -470,6 +572,13 @@ export async function pipeline(branchId = null) {
         enrolled: count(ADMISSION_STATUS.ENROLLED),
         rejected: count(ADMISSION_STATUS.REJECTED),
         awaitingAction: count(ADMISSION_STATUS.SUBMITTED) + count(ADMISSION_STATUS.REVIEWING) + count(ADMISSION_STATUS.APPROVED),
+        // Parent Portal Stage 4. Applications that came in through
+        // natyam-mobile rather than being taken at the desk. Surfaced as its
+        // own count because nobody is standing in front of Reception for
+        // these — a walk-in announces itself, a self-service application only
+        // exists in this queue.
+        fromParents: all.filter((a) => a.source === 'parent_portal').length,
+        unassignedBranch: all.filter((a) => !a.branchId).length,
         thisMonth: all.filter((a) => (a.appliedOn || '').startsWith(thisMonth)).length,
         conversionRate: decided ? Math.round((count(ADMISSION_STATUS.ENROLLED) / decided) * 100) : null,
         byLevel: LEVELS.map((l) => ({
@@ -520,7 +629,7 @@ async function branchName(branchId) {
  * so the dashboard's stalled count and the list's amber row always agree.
  */
 export async function listApplications(branchId = null, { status = null } = {}) {
-    const all = (await admissions$.all()).filter((a) => !branchId || a.branchId === branchId);
+    const all = (await admissions$.all()).filter((a) => atBranch(a, branchId));
     const rows = status && status !== 'all' ? all.filter((a) => a.status === status) : all;
 
     return rows
@@ -542,9 +651,15 @@ export async function listApplications(branchId = null, { status = null } = {}) 
 /** One application with everything the detail drawer shows. */
 export async function applicationDetail(id) {
     const application = await admissions$.findOrFail(id);
-    const [batches, likeness] = await Promise.all([
+    const [batches, likeness, suggestedBranch] = await Promise.all([
         eligibleBatches(application),
-        admissions$.findAllLikeness ? admissions$.findAllLikeness(application) : Promise.resolve([])
+        admissions$.findAllLikeness ? admissions$.findAllLikeness(application) : Promise.resolve([]),
+        // Only worth asking when the application has no branch yet and the
+        // parent expressed a preference — which is exactly the self-submitted
+        // case. A walk-in already carries a real branchId.
+        !application.branchId && application.preferredBranch
+            ? suggestBranchFor(application.preferredBranch)
+            : Promise.resolve(null)
     ]);
 
     return {
@@ -553,7 +668,14 @@ export async function applicationDetail(id) {
         statusLabel: statusLabel(application.status),
         nextAction: nextActionFor(application.status),
         eligibleBatches: batches,
-        possibleDuplicates: likeness || []
+        possibleDuplicates: likeness || [],
+
+        // Parent Portal Stage 4 — everything the review screen needs to
+        // handle a self-service application without special-casing it.
+        fromParent: application.source === 'parent_portal',
+        preferredBranch: application.preferredBranch || null,
+        suggestedBranch,
+        needsBranch: !application.branchId
     };
 }
 

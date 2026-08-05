@@ -14,9 +14,15 @@
  * this app only ever loads for the guardian portal. Pulling it in for one
  * two-field password form would put two design systems in a staff document.
  *
- * Sign-out is **not** duplicated here — it lives in the More sheet
- * (`js/ui/mobileShell.js`), which is where a phone user reaches for it. Two
- * sign-out buttons in one app is a way to make the wrong one memorable.
+ * Sign-out appears BOTH here and in the More sheet (`js/ui/mobileShell.js`).
+ *
+ * This file previously argued the opposite — that one sign-out was safer than
+ * two — and that was wrong in practice: "My account" is the first place
+ * people look for it, and a screen about your own account that cannot end
+ * your own session sends you hunting through a menu. Added on the school's
+ * instruction, 2026-08-05. Both entry points call the same
+ * `logout()` in auth.service.js, so there is one behaviour behind two doors,
+ * not two implementations.
  */
 
 import { Page } from '../../core/router.js';
@@ -28,7 +34,7 @@ import { EVENTS, bus } from '../../core/bus.js';
 import { formatDateLong } from '../../utils/date.js';
 import { roleLabel, roleCapabilities, PREFERENCE_DEFAULTS } from '../../config/app.config.js';
 import { users$, authMethodsOf } from '../../data/repositories.js';
-import { setOwnPassword } from '../../services/auth.service.js';
+import { setOwnPassword, logout } from '../../services/auth.service.js';
 
 const METHOD_LABEL = {
     google: { label: 'Google', icon: 'user' },
@@ -173,6 +179,19 @@ export default class MobileProfilePage extends Page {
                     </div>
                 </div>
             ` : ''}
+
+            <!--
+              Last on the screen, and the only destructive control on it, so it
+              sits well clear of the settings above that people tap casually.
+              Behaves exactly as the More sheet's own Sign out — same logout()
+              call, no confirmation step — because two doors to one action that
+              behave differently is worse than either behaviour on its own.
+            -->
+            <button class="m-btn m-btn-ghost m-btn-block" type="button" data-action="profile-logout"
+                    style="margin-bottom:20px;">
+                ${raw(icon('log-out', { size: 16 }))}
+                <span>Sign out</span>
+            </button>
         `);
     }
 
@@ -224,6 +243,13 @@ export default class MobileProfilePage extends Page {
         this.onDispose(on(root, 'click', '[data-action="toggle-caps"]', () => {
             this.showCaps = !this.showCaps;
             this.paint();
+        }));
+
+        this.onDispose(on(root, 'click', '[data-action="profile-logout"]', () => {
+            // Identical to the More sheet's handler: Firebase's own auth-state
+            // change (not this handler) returns to the login screen — see
+            // app.js's handleAuthStateChange().
+            logout().catch((err) => console.error('Sign out failed', err));
         }));
 
         this.onDispose(on(root, 'change', '[name="theme"]', (_e, t) => {

@@ -1404,3 +1404,50 @@
 @media (prefers-reduced-motion: reduce) {
     .toast, .toast[data-leaving="true"] { animation: none; }
 }
+
+/* ==========================================================================
+   FULL-SCREEN PWA — the page behind the app (Stage 6)
+   --------------------------------------------------------------------------
+   base.css sets `body { background: var(--surface-canvas) }`, which is v2's
+   near-white desktop canvas (#F6F8FA). Every v3 screen paints its own warm
+   backdrop on top, so on a normal page load that colour is never seen — but
+   it is seen in the two places that decide whether this feels like an app:
+
+     1. THE STATUS BAR. index.html now sets iOS to `black-translucent`, which
+        hands the app the pixels under the clock and battery. Whatever is
+        BEHIND the shell shows there — and a near-white strip above warm
+        terracotta artwork is exactly the "browser page behind the status bar"
+        this stage exists to remove.
+
+     2. OVERSCROLL. Rubber-banding past the top or bottom of a scroll on iOS,
+        and the overscroll glow on Android, both expose the page beneath. A
+        white flash on every bounce is the single most reliable way to make a
+        PWA feel like a web page.
+
+   #3d1f11 is measured, not chosen: the average of the top of
+   login-mobile-bg.jpg under --v3-scrim, so it continues the artwork rather
+   than approximating it. `overscroll-behavior: none` then stops the bounce
+   propagating to the document at all, which is what a native app does.
+   ========================================================================== */
+
+:root { --v3-chrome: #3d1f11; }
+
+html, body {
+    background: var(--v3-chrome);
+    /* Belt and braces with the shell's own height: on iOS the visual viewport
+       shrinks when the keyboard opens, and a body shorter than the layout
+       viewport would let the chrome colour band across the bottom. */
+    min-height: 100%;
+}
+
+body {
+    overscroll-behavior: none;
+}
+
+/* The shell already fills the viewport and paints the artwork; this only
+   guarantees it reaches the physical edges when a notch or home indicator is
+   present, rather than stopping at the safe-area boundary. */
+.m-shell {
+    padding-top: 0;
+    padding-bottom: 0;
+}

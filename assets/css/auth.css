@@ -196,6 +196,18 @@
 .auth-card-title { margin: 0 0 var(--space-1); font-size: var(--text-lg); font-weight: var(--weight-semibold); color: #fff; }
 .auth-card-sub { margin: 0 0 var(--space-5); font-size: var(--text-sm); color: rgba(255, 255, 255, .6); }
 
+/* The "new parents use Google" note, sitting directly under the Google
+   button. Quieter than .auth-card-sub — it is guidance aimed at one of three
+   audiences, not a heading — but deliberately at .62 rather than the .4 that
+   would read as disabled text, since it is the one line that tells a family
+   which button will actually work for them. */
+.auth-note {
+    margin: var(--space-2) 0 0;
+    font-size: var(--text-xs);
+    line-height: 1.5;
+    color: rgba(255, 255, 255, .62);
+}
+
 .auth-back-link {
     background: none; border: none; color: rgba(255, 255, 255, .6); font-size: var(--text-sm);
     /* Matches .glass-card's own width/max-width/centering exactly (including

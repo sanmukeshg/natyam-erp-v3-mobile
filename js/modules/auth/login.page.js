@@ -121,8 +121,7 @@ function friendlyAuthError(err, fallback) {
 function signInCardMarkup(initialError) {
     return html`
         <div class="glass-card" tabindex="-1">
-            <h1 class="auth-card-title">Welcome back</h1>
-            <p class="auth-card-sub">Sign in to continue to NATYAM ERP.</p>
+            <h1 class="auth-card-title">Sign in to Continue</h1>
 
             <div data-role="banner" aria-live="polite" aria-atomic="true">${initialError ? errorBanner(initialError) : ''}</div>
 
@@ -130,6 +129,19 @@ function signInCardMarkup(initialError) {
                 ${raw(GOOGLE_G_ICON)}
                 <span>Continue with Google</span>
             </button>
+
+            <!--
+              Addressed to parents only, and deliberately silent about staff.
+              A parent has no provisioned account, so Google is the only method
+              that can create an identity here — email/password and mobile OTP
+              both require an account someone already made for you. Staff know
+              which method they were given; saying so here would only add a
+              line families have to read past to find the one that concerns
+              them.
+            -->
+            <p class="auth-note">
+                Parents: please sign in using Continue with Google.
+            </p>
 
             <div class="auth-divider">or sign in with email</div>
 
@@ -179,8 +191,13 @@ function signInCardMarkup(initialError) {
  * @param {object} [options]
  * @param {string} [options.initialError] A rejection message to show immediately —
  *   set by app.js when it re-renders this screen after a provisioning failure.
+ * @param {Function|null} [options.onBack] Supplied only when this screen was
+ *   opened from the Public Experience (Stage 1), where the visitor came from
+ *   somewhere and needs a way back. Omitted for a rejection or a sign-out,
+ *   which reach this screen with nothing behind them — a "back" link there
+ *   would lead somewhere the person was never trying to go.
  */
-export function renderLogin(container, { initialError = null } = {}) {
+export function renderLogin(container, { initialError = null, onBack = null } = {}) {
     // app.js can call this again on the same #app node without ever
     // unmounting it in between — showLoginScreen() re-invokes renderLogin()
     // after a provisioning rejection. on()'s listeners are scoped to
@@ -254,7 +271,12 @@ export function renderLogin(container, { initialError = null } = {}) {
                     </div>
                 </div>
 
-                <div class="auth-foot"><span>© ${new Date().getFullYear()} Natyam School</span></div>
+                <div class="auth-foot">
+                    ${onBack ? html`
+                        <button class="auth-link-g" type="button" data-role="leave-btn">← Back to Natyam</button>
+                    ` : ''}
+                    <span>© ${new Date().getFullYear()} Natyam School</span>
+                </div>
             </div>
         </div>
     `);
@@ -309,6 +331,15 @@ export function renderLogin(container, { initialError = null } = {}) {
         // keyboard or nudging the viewport (preventScroll) for a tap that
         // only asked to reveal the sign-in screen, not to start typing yet.
         glassCard.focus({ preventScroll: true });
+    });
+
+    // Leaves the login screen entirely and re-enters the Public Experience.
+    // Distinct from [data-role="back-link"] below, which only returns the
+    // sign-in card to the hero state without leaving this screen at all.
+    onScoped(container, 'click', '[data-role="leave-btn"]', () => {
+        container.__authDisposers?.forEach((dispose) => dispose());
+        container.__authDisposers = null;
+        onBack();
     });
 
     onScoped(container, 'click', '[data-role="back-link"]', () => {
