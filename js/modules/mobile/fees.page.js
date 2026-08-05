@@ -36,7 +36,8 @@ import { formatMoney, formatMoneyShort } from '../../utils/money.js';
 import { formatDate, formatDateLong, localDate, startOfMonth } from '../../utils/date.js';
 import { PAYMENT_MODES } from '../../config/app.config.js';
 import { listStudents } from '../../services/students.service.js';
-import { collectionSummary, studentFeeSummary, recordPayment } from '../../services/fees.service.js';
+import { collectionSummary, studentFeeSummary, recordPayment, waiveInvoice } from '../../services/fees.service.js';
+import { formModal } from '../../ui/form.js';
 
 const FILTERS = [
     { key: null, label: 'Everyone' },
@@ -71,6 +72,38 @@ export default class MobileFeesPage extends Page {
 
         [EVENTS.PAYMENT_RECORDED, EVENTS.PAYMENT_REFUNDED, EVENTS.INVOICE_CREATED, EVENTS.BRANCH_CHANGED]
             .forEach((event) => this.events.on(event, () => this.load()));
+    }
+
+    /**
+     * ENH-309 — writing off an invoice, from a phone.
+     *
+     * Identical in behaviour to the desktop screen's own waiver, and calling
+     * the same waiveInvoice(): the reason is mandatory in the service rather
+     * than only in this form, so a waiver taken on a phone carries the same
+     * record as one taken at a desk.
+     *
+     * The whole outstanding balance goes — no partial waiver, by decision.
+     */
+    async waive(invoiceId) {
+        const invoice = (this.detail?.fees?.invoices || []).find((i) => i.id === invoiceId);
+        if (!invoice) return;
+
+        const done = await formModal({
+            title: `Waive ${invoice.number}?`,
+            description: `${formatMoney(invoice.balance)} is outstanding. Waiving writes that balance `
+                + 'off — the invoice stays on record with the reason attached.',
+            submitLabel: 'Waive invoice',
+            fields: [
+                { name: 'reason', label: 'Reason', type: 'textarea', rows: 3, required: true,
+                  help: 'Scholarship, hardship, goodwill — someone will ask later.' }
+            ],
+            values: { reason: '' },
+            onSubmit: (v) => waiveInvoice(invoice.id, { reason: v.reason })
+        });
+
+        if (!done) return;
+        toast.success('Invoice waived', invoice.number);
+        await this.load();
     }
 
     async load() {
@@ -259,6 +292,17 @@ export default class MobileFeesPage extends Page {
                                         ${canCollect ? html`
                                             <button class="m-btn m-btn-sm" data-action="collect" data-id="${invoice.id}">Collect</button>
                                         ` : ''}
+                                        <!--
+                                          ENH-309. fee.waive, not fee.collect —
+                                          different capabilities, and only
+                                          Administrator and Owner hold this one,
+                                          so Reception never sees a button the
+                                          service would refuse.
+                                        -->
+                                        ${session.can('fee.waive') && invoice.balance > 0 ? html`
+                                            <button class="m-btn m-btn-sm m-btn-ghost"
+                                                    data-action="waive" data-id="${invoice.id}">Waive</button>
+                                        ` : ''}
                                     </div>
                                 </div>
                             `;
@@ -435,6 +479,8 @@ export default class MobileFeesPage extends Page {
         this.onDispose(on(root, 'click', '[data-action="open"]', (_e, t) => this.open(t.dataset.id)));
         this.onDispose(on(root, 'click', '[data-action="close-detail"]', () => this.close()));
         this.onDispose(on(root, 'click', '.m-profile', (event) => event.stopPropagation()));
+
+        this.onDispose(on(root, 'click', '[data-action="waive"]', (_e, t) => this.waive(t.dataset.id)));
 
         this.onDispose(on(root, 'click', '[data-action="collect"]', (_e, t) => {
             this.payingInvoice = this.detail?.fees.invoices.find((i) => i.id === t.dataset.id) || null;

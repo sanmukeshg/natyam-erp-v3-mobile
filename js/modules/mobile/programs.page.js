@@ -37,9 +37,9 @@ import { listStaff } from '../../services/staff.service.js';
 import { localDate } from '../../utils/date.js';
 import {
     PROGRAM_STATUS, listPrograms, programSummary, programDetail,
-    setParticipants, eligibleStudents, schedule, updateProgram
+    setParticipants, eligibleStudents, schedule, updateProgram, complete, cancel
 } from '../../services/programs.service.js';
-import { formModal } from '../../ui/form.js';
+import { formModal, confirmModal } from '../../ui/form.js';
 
 const FILTERS = [
     { key: 'upcoming', label: 'Upcoming' },
@@ -263,15 +263,192 @@ export default class MobileProgramsPage extends Page {
                                 </button>
                             ` : ''}
                         </div>
+
+                        <!--
+                          ENH-303 / ENH-307. Both were desktop-only until now;
+                          they call the same complete() and cancel() the desktop
+                          screen does, so a programme finished on a phone is
+                          indistinguishable from one finished at a desk.
+
+                          Separated from the row above by a divider because
+                          these two end a programme, while Cast and Edit adjust
+                          a live one — and Cancel in particular should not sit a
+                          thumb's width from Edit.
+                        -->
+                        <div class="m-form-divider" style="margin:14px 0 10px;"></div>
+                        <div class="m-actions">
+                            <button class="m-btn" data-action="complete-program">
+                                ${raw(icon('check-circle', { size: 15 }))} Mark as completed
+                            </button>
+                            <button class="m-btn m-btn-ghost m-sheet-danger" data-action="cancel-program">
+                                ${raw(icon('x-circle', { size: 15 }))} Cancel programme
+                            </button>
+                        </div>
                     ` : ''}
 
                     <p class="m-subhead-note" style="margin-top:16px;">
-                        Scheduling, edits, completing and cancelling are done on the desktop app —
-                        completing a programme posts its income and expenditure to the ledger.
+                        Completing a programme posts its income and expenditure to the ledger.
                     </p>
                 </div>
             </div>
         `);
+    }
+
+    /**
+     * ENH-302 — the Branch/Batch pre-step for cast selection.
+     *
+     * Options are derived from the eligible students themselves rather than
+     * from listBranches()/listBatches(). Two reasons: it costs no extra reads,
+     * and it can only ever offer a branch or batch that actually has an
+     * eligible student in it — so no choice here can produce an empty list by
+     * surprise.
+     *
+     * Anyone already cast is kept regardless of the filter. Filtering them out
+     * would silently drop them when the form saves, because setParticipants()
+     * replaces the cast wholesale — a filter is for finding people, not for
+     * removing them.
+     *
+     * @returns {Promise<object[]|null>} the narrowed list, or null if cancelled.
+     */
+    async narrowCast(eligible, currentIds) {
+        // Branch NAMES are not on the student record — only branchId — so the
+        // list is fetched once and cached on the page. A failure degrades to
+        // showing ids rather than blocking the cast picker entirely: choosing
+        // a cast matters more than a pretty branch label.
+        if (!this.branchList) {
+            this.branchList = await listBranches().catch(() => []);
+        }
+        const branchName = (id) => this.branchList.find((b) => b.id === id)?.name || 'Branch';
+
+        const branches = [...new Map(eligible
+            .filter((s) => s.branchId)
+            .map((s) => [s.branchId, { id: s.branchId, name: branchName(s.branchId) }])
+        ).values()];
+
+        const batches = [...new Map(eligible
+            .filter((s) => s.batchId)
+            .map((s) => [s.batchId, { id: s.batchId, name: s.batchSchedule?.name || 'Batch' }])
+        ).values()];
+
+        // Nothing to narrow — do not make someone dismiss a dialog that has
+        // only one possible answer.
+        if (branches.length < 2 && batches.length < 2) return eligible;
+
+        const chosen = await formModal({
+            title: 'Narrow the list',
+            description: `${eligible.length} students are eligible. Filter before choosing, or leave both blank for all.`,
+            submitLabel: 'Continue',
+            fields: [
+                ...(branches.length > 1 ? [{
+                    name: 'branchId', label: 'Branch', type: 'select', placeholder: 'All branches',
+                    options: branches.map((b) => ({ value: b.id, label: b.name }))
+                }] : []),
+                ...(batches.length > 1 ? [{
+                    name: 'batchId', label: 'Batch', type: 'select', placeholder: 'All batches',
+                    options: batches.map((b) => ({ value: b.id, label: b.name }))
+                }] : [])
+            ],
+            values: { branchId: '', batchId: '' },
+            onSubmit: (v) => v
+        });
+
+        if (!chosen) return null;
+
+        return eligible.filter((s) =>
+            currentIds.includes(s.id)
+            || ((!chosen.branchId || s.branchId === chosen.branchId)
+                && (!chosen.batchId || s.batchId === chosen.batchId)));
+    }
+
+    /**
+     * ENH-303 — marking a programme complete, from a phone.
+     *
+     * COMPLETING TOUCHES THE BOOKS: complete() posts whatever income and
+     * expenditure is entered to the ledger, and nothing on this screen can
+     * undo that. So the money is confirmed a second time before it goes,
+     * exactly as the desktop screen does — the wording differs only where a
+     * phone needs it shorter.
+     *
+     * `live` already gates the button on status, so a completed or cancelled
+     * programme never offers this.
+     */
+    async completeProgram() {
+        const p = this.detail?.program;
+        if (!p) return;
+        const cast = this.detail.participants.length;
+
+        const done = await formModal({
+            title: `Mark ${p.name} complete`,
+            description: 'Income and expenditure entered here are posted to the ledger.',
+            submitLabel: 'Mark complete',
+            fields: [
+                { name: 'attendees', label: 'How many actually came', type: 'number', min: 0,
+                  help: cast ? `${cast} were cast. Leave blank to keep that figure.` : null },
+                { name: 'income', label: 'Income taken', type: 'money', min: 0,
+                  help: 'Ticket sales, entry fees.' },
+                { name: 'expenditure', label: 'Spent', type: 'money', min: 0,
+                  help: 'Venue, costumes, musicians.' },
+                { name: 'notes', label: 'Notes', type: 'textarea', rows: 2 }
+            ],
+            values: { attendees: '', income: '', expenditure: '', notes: '' },
+            onSubmit: async (v) => {
+                const income = v.income || 0;
+                const spend = v.expenditure || 0;
+                const ok = await confirmModal({
+                    title: `Complete ${p.name}?`,
+                    message: (income || spend)
+                        ? `${formatMoney(income)} income and ${formatMoney(spend)} expenditure will be `
+                          + 'posted to the ledger. This cannot be undone here.'
+                        : 'No money will be posted. The programme is marked complete and can then '
+                          + 'have certificates issued against it.',
+                    confirmLabel: 'Mark complete',
+                    tone: 'caution'
+                });
+                if (!ok) throw new Error('Not completed. Nothing has changed.');
+                return complete(p.id, {
+                    attendees: v.attendees === null ? null : v.attendees,
+                    income, expenditure: spend, notes: v.notes || null
+                });
+            }
+        });
+
+        if (!done) return;
+        toast.success('Programme completed', p.name);
+        this.detail = null;
+        await this.load();
+    }
+
+    /**
+     * ENH-307 — cancelling a programme, matching the desktop's own action.
+     *
+     * A cancellation is NOT a deletion, and the dialog says so: the programme
+     * stays on record with its cast and date intact, marked cancelled. That
+     * distinction matters because the record is what explains, months later,
+     * why a batch has no certificates from that term.
+     *
+     * The reason is required by cancel() itself, so an empty one is refused by
+     * the service rather than only by this form.
+     */
+    async cancelProgram() {
+        const p = this.detail?.program;
+        if (!p) return;
+
+        const done = await formModal({
+            title: `Cancel ${p.name}`,
+            description: 'It stays on record as cancelled — the cast and the date are not erased.',
+            submitLabel: 'Cancel programme',
+            fields: [
+                { name: 'reason', label: 'Why', required: true,
+                  placeholder: 'Venue unavailable, too few participants…' }
+            ],
+            values: { reason: '' },
+            onSubmit: (v) => cancel(p.id, { reason: v.reason })
+        });
+
+        if (!done) return;
+        toast.success('Programme cancelled', p.name);
+        this.detail = null;
+        await this.load();
     }
 
     /**
@@ -299,6 +476,24 @@ export default class MobileProgramsPage extends Page {
         }
 
         const current = this.detail.participants.map((s) => s.id);
+
+        // ENH-302 — narrow the list before picking from it.
+        //
+        // A pre-step rather than filters inside the cast dialog: that list is
+        // a `checks` field rendered once, so it cannot re-filter in place.
+        // Two small dialogs is the honest way to get this with the components
+        // that exist, and it also means the cast box opens already short
+        // rather than opening long and being whittled down.
+        //
+        // Skipped entirely when there is nothing to narrow — a single branch
+        // and a single batch means the filter can only ever be a no-op, and
+        // an extra dialog that changes nothing is just an extra tap.
+        eligible = await this.narrowCast(eligible, current);
+        if (!eligible) return;          // cancelled the filter step
+        if (!eligible.length) {
+            toast.error('No students match', 'Try a different branch or batch.');
+            return;
+        }
 
         const saved = await formModal({
             title: `Cast for ${p.name}`,
@@ -350,6 +545,8 @@ export default class MobileProgramsPage extends Page {
         }));
         this.onDispose(on(root, 'click', '[data-action="cast"]', () => this.chooseCast()));
         this.onDispose(on(root, 'click', '[data-action="edit-program"]', () => this.editProgram()));
+        this.onDispose(on(root, 'click', '[data-action="complete-program"]', () => this.completeProgram()));
+        this.onDispose(on(root, 'click', '[data-action="cancel-program"]', () => this.cancelProgram()));
         this.onDispose(on(root, 'click', '[data-action="add"]', () => this.newProgram()));
 
         this.onKey = (event) => {

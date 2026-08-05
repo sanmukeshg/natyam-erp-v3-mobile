@@ -1451,3 +1451,17 @@ body {
     padding-top: 0;
     padding-bottom: 0;
 }
+
+/* BUG-301 — a cancelled class on the attendance board. Dimmed and inert: it
+   is rendered as a div rather than a button, so this only has to look
+   unavailable, not also behave that way. `cursor: default` matters because
+   .m-class is otherwise a tappable card and the pointer would still promise
+   an action. */
+.m-class[data-cancelled] {
+    opacity: 0.6;
+    cursor: default;
+}
+.m-badge[data-state="cancelled"] {
+    background: rgba(240, 145, 124, 0.18);
+    color: var(--v3-negative);
+}

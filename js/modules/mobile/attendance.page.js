@@ -110,20 +110,33 @@ export default class MobileAttendancePage extends Page {
             ${rule.markable ? '' : html`<div class="m-notice" data-tone="caution">${rule.message}</div>`}
 
             <div class="m-stack" style="margin-top:12px;">
-                ${batches.length ? batches.map((batch) => html`
-                    <button class="m-card m-class" data-action="open"
-                            data-batch="${batch.id}" data-date="${this.date}">
+                ${batches.length ? batches.map((batch) => {
+                    // BUG-301. A cancelled class is rendered as a <div>, not a
+                    // <button> — it is not "a button that refuses", it is not
+                    // a control at all, so it cannot be tabbed to, tapped, or
+                    // triggered by a stray delegated click.
+                    const off = batch.cancelled;
+                    const body = html`
                         <span class="m-class-main">
-                            <span class="m-class-name">${batch.name}</span>
+                            <span class="m-class-name" style="${off ? 'text-decoration:line-through;' : ''}">
+                                ${batch.name}
+                            </span>
                             <span class="m-class-time">
-                                ${batch.startTime}–${batch.endTime} · ${batch.expected} student${batch.expected === 1 ? '' : 's'}
+                                ${off
+                                    ? `Cancelled${batch.cancelReason ? ` — ${batch.cancelReason}` : ''}`
+                                    : `${batch.startTime}–${batch.endTime} · ${batch.expected} student${batch.expected === 1 ? '' : 's'}`}
                             </span>
                         </span>
-                        <span class="m-badge" data-state="${batch.done ? 'marked' : 'missed'}">
-                            ${batch.done ? `${batch.rate}%` : 'Mark'}
+                        <span class="m-badge" data-state="${off ? 'cancelled' : (batch.done ? 'marked' : 'missed')}">
+                            ${off ? 'Cancelled' : (batch.done ? `${batch.rate}%` : 'Mark')}
                         </span>
-                    </button>
-                `) : html`<div class="m-card m-empty">No classes scheduled on this day.</div>`}
+                    `;
+
+                    return off
+                        ? html`<div class="m-card m-class" data-cancelled="true">${body}</div>`
+                        : html`<button class="m-card m-class" data-action="open"
+                                       data-batch="${batch.id}" data-date="${this.date}">${body}</button>`;
+                }) : html`<div class="m-card m-empty">No classes scheduled on this day.</div>`}
             </div>
         `);
     }
@@ -131,6 +144,16 @@ export default class MobileAttendancePage extends Page {
     /* -------------------------------------------------------------- REGISTER */
 
     async open(batchId, date) {
+        // BUG-301, second line of defence. The row is no longer a control, but
+        // a register can also be reached by a stale hash or a repeated tap
+        // while the board was reloading — so opening is refused here too,
+        // before openRegister() is ever called.
+        const batch = (this.board?.batches || []).find((b) => b.id === batchId);
+        if (batch?.cancelled) {
+            toast.error('This class was cancelled', 'Attendance cannot be recorded for it.');
+            return;
+        }
+
         try {
             this.register = await openRegister(batchId, date);
             this.date = date;

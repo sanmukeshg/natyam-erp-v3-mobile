@@ -130,6 +130,16 @@ export async function dayBoard(date = localDate(), branchId = null) {
         staff$.teachers()
     ]);
 
+    // BUG-301. meetingOn() answers "which batches RECUR on this weekday",
+    // which is not the same question as "which classes are actually happening".
+    // A cancelled session still recurs, so without this the board listed it as
+    // a normal class waiting to be marked — and the only thing stopping a
+    // register being posted against it was postRegister()'s own guard, hit
+    // after someone had already opened the screen and ticked names.
+    //
+    // One extra read for the whole day, not one per batch.
+    const sessions = await sessionMap(date, date, branchId).catch(() => new Map());
+
     const byBatch = new Map();
     for (const row of marked) {
         if (!byBatch.has(row.batchId)) byBatch.set(row.batchId, []);
@@ -143,6 +153,9 @@ export async function dayBoard(date = localDate(), branchId = null) {
         date,
         batches: meeting.map((batch, index) => {
             const rows = byBatch.get(batch.id) || [];
+            const classSession = sessions.get(`${batch.id}|${date}`) || null;
+            const status = classSession?.status || null;
+
             return {
                 ...batch,
                 teacherName: teacherName.get(batch.teacherId) || 'Unassigned',
@@ -150,7 +163,16 @@ export async function dayBoard(date = localDate(), branchId = null) {
                 marked: rows.length,
                 done: rows.length > 0,
                 rate: AttendanceMath.rateOf(rows),
-                breakdown: AttendanceMath.breakdownOf(rows)
+                breakdown: AttendanceMath.breakdownOf(rows),
+
+                // BUG-301. `markable` is what the UI gates on, so a screen
+                // cannot decide for itself that a cancelled class is fine to
+                // open — and it mirrors exactly what postRegister() enforces
+                // server-side, rather than being a second, looser opinion.
+                sessionStatus: status,
+                cancelled: status === 'cancelled',
+                markable: status !== 'cancelled' && status !== 'postponed',
+                cancelReason: classSession?.reason || classSession?.cancelReason || null
             };
         })
     };
