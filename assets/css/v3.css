@@ -477,11 +477,6 @@ a.m-attn:hover { text-decoration: none; }
 .m-quick-icon { width: 34px; height: 34px; flex-shrink: 0; display: grid; place-items: center; border-radius: var(--v3-radius-item); }
 .m-quick-label { font-size: var(--text-sm); font-weight: var(--weight-semibold); color: var(--v3-name); }
 
-.m-insight { padding: 12px 14px; text-decoration: none; display: block; }
-.m-insight:hover { text-decoration: none; }
-.m-insight-label { font-size: 11px; color: var(--v3-muted); }
-.m-insight-value { font-size: var(--text-md); font-weight: var(--weight-semibold); color: var(--v3-name); margin-top: 4px; }
-.m-insight-foot  { font-size: 11px; color: var(--v3-muted); margin-top: 2px; }
 
 /* ---- badges, activity, states ---- */
 .m-badge {

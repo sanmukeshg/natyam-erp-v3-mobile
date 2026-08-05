@@ -29,7 +29,7 @@ import { html, render, raw } from '../../utils/dom.js';
 import { icon } from '../../ui/icons.js';
 import { session } from '../../core/session.js';
 import { EVENTS } from '../../core/bus.js';
-import { formatMoney, formatMoneyShort, formatNumber } from '../../utils/money.js';
+import { formatMoneyShort, formatNumber } from '../../utils/money.js';
 import { overview, forTeacher } from '../../services/dashboard.service.js';
 
 const STATE_LABEL = {
@@ -343,61 +343,6 @@ export default class MobileDashboardPage extends Page {
         `;
     }
 
-    /**
-     * The design's 2×2 insight tiles. Assembled from panels the service
-     * already returned rather than a second round of queries.
-     */
-    insights(data) {
-        const money = panelFailed(data.money) ? null : data.money;
-        const roll = panelFailed(data.roll) ? null : data.roll;
-        const today = panelFailed(data.today) ? null : data.today;
-        const attendanceKpi = Array.isArray(data.headline)
-            ? data.headline.find((kpi) => kpi.key === 'attendance') : null;
-
-        const tiles = [
-            { label: 'This month', value: money ? formatMoneyShort(money.collectedThisMonth || 0) : '—',
-              foot: 'collected', link: '#/fees' },
-            { label: 'Attendance', value: attendanceKpi ? `${attendanceKpi.value}${attendanceKpi.unit || ''}` : '—',
-              foot: 'last 30 days', link: '#/attendance' },
-            { label: 'Registers', value: today ? `${today.registersDone ?? 0}/${today.total ?? 0}` : '—',
-              foot: 'marked today', link: '#/attendance' },
-            { label: 'Roll', value: roll ? formatNumber(roll.total || 0) : '—',
-              foot: roll?.capacity?.occupancy != null ? `${roll.capacity.occupancy}% of seats` : 'active students',
-              link: '#/students' }
-        ];
-
-        return html`
-            <h2 class="m-section-label">Insights</h2>
-            <div class="m-grid-2">
-                ${tiles.map((tile) => html`
-                    <a class="m-card m-insight" href="${tile.link}">
-                        <span class="m-insight-label">${tile.label}</span>
-                        <span class="m-insight-value" style="display:block;">${tile.value}</span>
-                        <span class="m-insight-foot" style="display:block;">${tile.foot}</span>
-                    </a>
-                `)}
-            </div>
-        `;
-    }
-
-    activity(rows) {
-        if (panelFailed(rows) || !rows?.length) return '';
-
-        return html`
-            <h2 class="m-section-label">Recent activity</h2>
-            <div class="m-stack">
-                ${rows.slice(0, 6).map((entry) => html`
-                    <div class="m-card m-activity">
-                        <span class="m-dot"></span>
-                        <div style="flex:1;min-width:0;">
-                            <div class="m-activity-text">${entry.summary}</div>
-                            <div class="m-activity-meta">${entry.ago}</div>
-                        </div>
-                    </div>
-                `)}
-            </div>
-        `;
-    }
 }
 
 /* ------------------------------------------------------------------ HELPERS */
