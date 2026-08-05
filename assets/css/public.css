@@ -294,3 +294,87 @@
     .pwa-actions { flex-direction: row-reverse; }
     .pwa-actions .m-btn { flex: 1; }
 }
+
+/* ==========================================================================
+   PARENT PORTAL (Stage 7)
+   --------------------------------------------------------------------------
+   The portal's six pages were carried over from v2 and are now rendered in
+   the v3 language. These are the few classes that had no direct v3
+   equivalent, kept deliberately small — everything else maps onto .m-card,
+   .m-stack, .m-facts and .m-badge, which the staff and applicant screens
+   already use.
+   ========================================================================== */
+
+/* v2 nested a `.card-body` inside every `.card` to carry the padding; v3's
+   .m-card has none of its own. Rather than restructure six files' markup,
+   the inner element keeps its job under a v3 name. */
+.m-card-inner { padding: var(--space-4); }
+
+/* v2's page headers sat inside a text wrapper. Harmless, and keeping it means
+   the heading markup did not have to be reshaped page by page. */
+.p-page-head-text { display: block; }
+
+/* The child switcher in the app bar. Sized down from .m-input, which is built
+   for a 44px form field — in the bar it sits beside the title and must not
+   dominate it. max-width keeps a long name from squeezing the title out. */
+.m-child-select {
+    min-height: 34px;
+    max-width: 46vw;
+    padding: 0 8px;
+    font-size: var(--text-xs);
+    flex-shrink: 0;
+}
+
+/* The portal has a tab bar, so its content column ends above the bar rather
+   than at the safe-area edge — the same arrangement the staff shell uses, and
+   the opposite of .p-shell's public/applicant variant which has no tab bar.
+   This override has to come after that rule to win. */
+.p-shell:has(.m-tabbar) .m-content { padding-bottom: var(--space-4); }
+
+/* ---------------------------------------------- PORTAL: CHILD & LISTS ---- */
+
+/* Whose card this is. It was rendering as .m-card-meta — the muted caption
+   style — which put the child's NAME quieter than the batch name below it.
+   Under "All children" that name is the single most important word in the
+   card: it is what tells a parent which of their four this is. */
+.p-child-name {
+    margin: 0 0 6px;
+    font-size: var(--text-sm);
+    font-weight: var(--weight-semibold);
+    color: var(--v3-title);
+    text-shadow: var(--v3-title-shadow);
+    letter-spacing: 0.01em;
+}
+
+/* The v2 portal put its day/time rows in bare <ul>s, which inherited base.css
+   list styling and a colour meant for a light surface — over the warm artwork
+   they read as barely-there grey. These are the actual answer to "when does
+   my child have class", so they get the card's primary text colour. */
+.p-portal-list {
+    margin: 10px 0 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.p-portal-list li {
+    font-size: var(--text-sm);
+    line-height: 1.5;
+    color: var(--v3-name);
+}
+
+/* The avatar/profile button beside the child switcher, matching the staff
+   shell's own .m-avatar-btn placement so both audiences reach "my account" in
+   the same corner. */
+.p-portal-account {
+    flex-shrink: 0;
+    width: 34px; height: 34px;
+    display: grid; place-items: center;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.13);
+    border: 1px solid var(--v3-card-border);
+    color: var(--v3-name);
+    cursor: pointer;
+}

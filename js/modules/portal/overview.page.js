@@ -13,6 +13,7 @@ import { formatMoney } from '../../utils/money.js';
 import { levelLabel } from '../../config/app.config.js';
 import { guardianSession } from '../../services/portal/guardianAuth.service.js';
 import { studentFeeSummary } from '../../services/fees.service.js';
+import { EVENTS } from '../../core/bus.js';
 
 const DAY_LABELS = { Sun: 'Sun', Mon: 'Mon', Tue: 'Tue', Wed: 'Wed', Thu: 'Thu', Fri: 'Fri', Sat: 'Sat' };
 
@@ -24,25 +25,32 @@ export default class PortalOverviewPage extends Page {
 
     async render(container) {
         this.container = container;
-        const students = guardianSession.students;
+
+        // The one portal page that never subscribed to this — because it
+        // always showed every child, so a change of child could not affect
+        // it. That is exactly why the switcher appeared dead here while it
+        // worked on Attendance and Fees: those five pages have listened all
+        // along. Subscribed once, guarded, since render() runs again on each
+        // child change.
+        if (!this.subscribed) {
+            this.subscribed = true;
+            this.events.on(EVENTS.PORTAL_CHILD_CHANGED, () => this.render(container));
+        }
+
+        // selectedChildren(), not students. This page used to list every child
+        // unconditionally, which was right when there was no way to choose
+        // one. With an explicit "All children" entry in the app bar, ignoring
+        // the switcher made it look broken — you picked Ayaan and still saw
+        // all four.
+        const students = guardianSession.selectedChildren();
 
         const fees = await Promise.all(
             students.map((s) => studentFeeSummary(s.id).catch(() => null))
         );
 
         render(container, html`
-            <header class="page-header">
-                <div class="page-header-text">
-                    <h1 class="page-title">Welcome</h1>
-                    <p class="page-subtitle">
-                        ${students.length === 1
-                            ? "Here's your child's snapshot."
-                            : "Here's a snapshot for each of your children."}
-                    </p>
-                </div>
-            </header>
-            <div class="page-body">
-                <div class="grid grid-2">
+            <div class="m-stack">
+                <div class="m-stack">
                     ${students.map((student, i) => this.card(student, fees[i]))}
                 </div>
             </div>
@@ -52,26 +60,26 @@ export default class PortalOverviewPage extends Page {
     card(student, fees) {
         const schedule = student.batchSchedule;
         return html`
-            <div class="card">
-                <div class="card-body">
-                    <h3 class="type-strong">${student.name}</h3>
-                    <p class="type-caption type-muted">
+            <div class="m-card">
+                <div class="m-card-inner">
+                    <h3 class="m-card-title">${student.name}</h3>
+                    <p class="m-card-meta">
                         ${levelLabel(student.level)}${schedule ? ` · ${schedule.name}` : ' · Not yet placed in a batch'}
                     </p>
                     ${schedule ? html`
-                        <p class="type-caption type-muted">
+                        <p class="m-card-meta">
                             ${(schedule.days || []).map((d) => DAY_LABELS[d] || d).join(', ')}
                             · ${schedule.startTime}–${schedule.endTime}
                         </p>
                     ` : ''}
-                    <div class="grid grid-2 mt-2">
+                    <div class="m-facts" style="margin-top:12px;">
                         <div>
-                            <div class="type-caption type-muted">Outstanding</div>
-                            <div class="type-strong">${fees ? formatMoney(fees.outstanding) : '—'}</div>
+                            <div class="m-card-meta">Outstanding</div>
+                            <div class="m-card-title">${fees ? formatMoney(fees.outstanding) : '—'}</div>
                         </div>
                         <div>
-                            <div class="type-caption type-muted">Overdue</div>
-                            <div class="type-strong">${fees ? formatMoney(fees.overdue) : '—'}</div>
+                            <div class="m-card-meta">Overdue</div>
+                            <div class="m-card-title">${fees ? formatMoney(fees.overdue) : '—'}</div>
                         </div>
                     </div>
                 </div>

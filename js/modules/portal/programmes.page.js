@@ -27,35 +27,42 @@ export default class PortalProgrammesPage extends Page {
         this.events.on(EVENTS.PORTAL_CHILD_CHANGED, () => this.paint());
     }
 
+    /**
+     * One card per selected child, newest programme first within each.
+     * Programmes ride on the student record itself, so like Timetable this
+     * needs no fetch and "All children" costs nothing.
+     */
     paint() {
-        const student = guardianSession.activeChild();
-        const programmes = [...(student?.programmes || [])].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+        const students = guardianSession.selectedChildren();
+        const many = students.length > 1;
 
         render(this.container, html`
-            <header class="page-header">
-                <div class="page-header-text">
-                    <h1 class="page-title">Programmes</h1>
-                    <p class="page-subtitle">${student?.name || ''}</p>
+
+            ${students.length ? html`
+                <div class="m-stack">
+                    ${students.map((student) => {
+                        const programmes = [...(student.programmes || [])]
+                            .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+                        return html`
+                            <div class="m-card"><div class="m-card-inner">
+                                ${many ? html`<p class="p-child-name">${student.name}</p>` : ''}
+                                ${programmes.length ? html`
+                                    <ul>
+                                        ${programmes.map((p) => html`
+                                            <li style="margin-top:6px;">
+                                                <span class="m-card-title">${p.name}</span>
+                                                <span class="m-card-meta"> — ${p.type} · ${formatDate(p.date)}${p.venue ? ` · ${p.venue}` : ''}</span>
+                                            </li>
+                                        `)}
+                                    </ul>
+                                ` : html`
+                                    <p style="margin:0;">${student.name} isn't taking part in any upcoming programme yet.</p>
+                                `}
+                            </div></div>
+                        `;
+                    })}
                 </div>
-            </header>
-            <div class="page-body">
-                ${programmes.length ? html`
-                    <div class="card"><div class="card-body">
-                        <ul>
-                            ${programmes.map((p) => html`
-                                <li class="mt-1">
-                                    <span class="type-strong">${p.name}</span>
-                                    <span class="type-caption type-muted"> — ${p.type} · ${formatDate(p.date)}${p.venue ? ` · ${p.venue}` : ''}</span>
-                                </li>
-                            `)}
-                        </ul>
-                    </div></div>
-                ` : html`
-                    <div class="card"><div class="card-body">
-                        ${student?.name || 'This child'} isn't taking part in any upcoming programme yet.
-                    </div></div>
-                `}
-            </div>
+            ` : html`<div class="m-card m-empty">No programmes to show.</div>`}
         `);
     }
 }

@@ -28,43 +28,51 @@ export default class PortalCertificatesPage extends Page {
         this.events.on(EVENTS.PORTAL_CHILD_CHANGED, () => this.load());
     }
 
+    /**
+     * One section per selected child. As on Attendance, forGuardian() already
+     * returns every child's certificates in one read — only the filtering
+     * changed, so "All children" costs no extra queries.
+     */
     async load() {
-        const student = guardianSession.activeChild();
-        if (!student) { render(this.container, this.shell(null, [])); return; }
+        const students = guardianSession.selectedChildren();
+        if (!students.length) { render(this.container, this.page([])); return; }
 
         const all = await certificates$.forGuardian(guardianSession.phone, guardianSession.email);
-        const certificates = all.filter((c) => c.studentId === student.id);
         if (this.disposed) return;
-        render(this.container, this.shell(student, certificates));
+
+        render(this.container, this.page(students.map((student) => ({
+            student,
+            certificates: all.filter((c) => c.studentId === student.id)
+        }))));
     }
 
-    shell(student, certificates) {
+    page(blocks) {
+        const many = blocks.length > 1;
+
         return html`
-            <header class="page-header">
-                <div class="page-header-text">
-                    <h1 class="page-title">Certificates</h1>
-                    <p class="page-subtitle">${student?.name || ''}</p>
-                </div>
-            </header>
-            <div class="page-body">
-                ${certificates.length ? html`
-                    <div class="card"><div class="card-body">
-                        <ul>
-                            ${certificates.map((c) => html`
-                                <li class="mt-1">
-                                    <span class="type-strong">${c.title}</span>
-                                    <span class="type-caption type-muted"> — ${c.serial} · issued ${formatDate(c.issuedOn)}</span>
-                                    ${c.status === 'revoked' ? html`<span class="badge badge-neutral">Revoked</span>` : ''}
-                                </li>
-                            `)}
-                        </ul>
-                    </div></div>
-                ` : html`
-                    <div class="card"><div class="card-body">
-                        No certificates issued to ${student?.name || 'this child'} yet.
-                    </div></div>
-                `}
-            </div>
+
+            ${blocks.length ? blocks.map(({ student, certificates }) => html`
+                <section class="m-stack" style="margin-bottom:20px;">
+                    ${many ? html`<h2 class="m-section-label">${student.name}</h2>` : ''}
+                    ${certificates.length ? html`
+                        <div class="m-card"><div class="m-card-inner">
+                            <ul>
+                                ${certificates.map((c) => html`
+                                    <li style="margin-top:6px;">
+                                        <span class="m-card-title">${c.title}</span>
+                                        <span class="m-card-meta"> — ${c.serial} · issued ${formatDate(c.issuedOn)}</span>
+                                        ${c.status === 'revoked' ? html`<span class="m-badge">Revoked</span>` : ''}
+                                    </li>
+                                `)}
+                            </ul>
+                        </div></div>
+                    ` : html`
+                        <div class="m-card"><div class="m-card-inner">
+                            No certificates issued to ${student.name} yet.
+                        </div></div>
+                    `}
+                </section>
+            `) : html`<div class="m-card m-empty">No certificates yet.</div>`}
         `;
     }
 }

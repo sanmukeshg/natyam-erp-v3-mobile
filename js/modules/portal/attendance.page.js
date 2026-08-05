@@ -30,60 +30,76 @@ export default class PortalAttendancePage extends Page {
         this.events.on(EVENTS.PORTAL_CHILD_CHANGED, () => this.load());
     }
 
+    /**
+     * Renders one section per selected child — one when a child is chosen in
+     * the app bar, all of them under "All children".
+     *
+     * The read is unchanged and still happens ONCE: forGuardian() already
+     * returns every child's records, and always did. Only the filtering moved
+     * — from "the active child" to "each selected child" — so showing four
+     * children costs no more queries than showing one.
+     */
     async load() {
-        const student = guardianSession.activeChild();
-        if (!student) { render(this.container, this.shell(null, null, null)); return; }
+        const students = guardianSession.selectedChildren();
+        if (!students.length) { render(this.container, this.page([])); return; }
 
         const today = localDate();
         const weekStart = startOfWeek(today);
         const monthStart = `${monthKey(today)}-01`;
 
         const all = await attendance$.forGuardian(guardianSession.phone, guardianSession.email);
-        const mine = all.filter((r) => r.studentId === student.id);
-        const weekRows = mine.filter((r) => r.date >= weekStart && r.date <= today);
-        const monthRows = mine.filter((r) => r.date >= monthStart && r.date <= today);
-
         if (this.disposed) return;
-        render(this.container, this.shell(student, {
-            rate: AttendanceMath.rateOf(weekRows), breakdown: AttendanceMath.breakdownOf(weekRows), rows: weekRows
-        }, {
-            rate: AttendanceMath.rateOf(monthRows), breakdown: AttendanceMath.breakdownOf(monthRows), rows: monthRows
-        }));
+
+        const blocks = students.map((student) => {
+            const mine = all.filter((r) => r.studentId === student.id);
+            const weekRows = mine.filter((r) => r.date >= weekStart && r.date <= today);
+            const monthRows = mine.filter((r) => r.date >= monthStart && r.date <= today);
+            return {
+                student,
+                week: { rate: AttendanceMath.rateOf(weekRows), breakdown: AttendanceMath.breakdownOf(weekRows), rows: weekRows },
+                month: { rate: AttendanceMath.rateOf(monthRows), breakdown: AttendanceMath.breakdownOf(monthRows), rows: monthRows }
+            };
+        });
+
+        render(this.container, this.page(blocks));
     }
 
-    shell(student, week, month) {
+    page(blocks) {
+        // The child's name heads each section only when there is more than
+        // one — with a single child the app bar already says whose records
+        // these are, and repeating it is noise.
+        const many = blocks.length > 1;
+
         return html`
-            <header class="page-header">
-                <div class="page-header-text">
-                    <h1 class="page-title">Attendance</h1>
-                    <p class="page-subtitle">${student?.name || ''}</p>
-                </div>
-            </header>
-            <div class="page-body">
-                <div class="grid grid-2">
-                    ${this.summaryCard('This week', week)}
-                    ${this.summaryCard('This month', month)}
-                </div>
-                ${week?.rows?.length ? html`
-                    <div class="card mt-2"><div class="card-body">
-                        <h3 class="type-strong">This week's registers</h3>
-                        <ul class="mt-2">
-                            ${week.rows.map((r) => html`
-                                <li>${formatDate(r.date)} — ${r.status === 'present' ? 'Present' : 'Absent'}</li>
-                            `)}
-                        </ul>
-                    </div></div>
-                ` : ''}
-            </div>
+
+            ${blocks.length ? blocks.map(({ student, week, month }) => html`
+                <section class="m-stack" style="margin-bottom:20px;">
+                    ${many ? html`<h2 class="m-section-label">${student.name}</h2>` : ''}
+                    <div class="m-stack">
+                        ${this.summaryCard('This week', week)}
+                        ${this.summaryCard('This month', month)}
+                    </div>
+                    ${week?.rows?.length ? html`
+                        <div class="m-card" style="margin-top:12px;"><div class="m-card-inner">
+                            <h3 class="m-card-title">This week's registers</h3>
+                            <ul style="margin-top:12px;">
+                                ${week.rows.map((r) => html`
+                                    <li>${formatDate(r.date)} — ${r.status === 'present' ? 'Present' : 'Absent'}</li>
+                                `)}
+                            </ul>
+                        </div></div>
+                    ` : ''}
+                </section>
+            `) : html`<div class="m-card m-empty">No attendance recorded yet.</div>`}
         `;
     }
 
     summaryCard(label, summary) {
         return html`
-            <div class="card"><div class="card-body">
-                <div class="type-caption type-muted">${label}</div>
-                <div class="type-strong" style="font-size:28px">${summary?.rate != null ? `${summary.rate}%` : '—'}</div>
-                <p class="type-caption type-muted">
+            <div class="m-card"><div class="m-card-inner">
+                <div class="m-card-meta">${label}</div>
+                <div class="m-card-title" style="font-size:28px">${summary?.rate != null ? `${summary.rate}%` : '—'}</div>
+                <p class="m-card-meta">
                     ${summary ? `${summary.breakdown.present} present · ${summary.breakdown.absent} absent` : 'No classes recorded yet.'}
                 </p>
             </div></div>

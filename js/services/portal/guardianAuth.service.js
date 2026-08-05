@@ -70,6 +70,14 @@ export async function resolveGuardianIdentity(identity) {
  * to keep letting them navigate).
  */
 class GuardianSession {
+    /**
+     * The sentinel `activeChildId` meaning "all children at once". A string
+     * rather than null so it can never collide with a real Firestore document
+     * id, and so an unset session (null) stays distinguishable from a
+     * deliberate All.
+     */
+    static ALL = '__all__';
+
     constructor() {
         this.phone = null;
         this.email = null;
@@ -81,7 +89,13 @@ class GuardianSession {
         this.phone = phone || null;
         this.email = email || null;
         this.students = students || [];
-        this.activeChildId = this.students[0]?.id || null;
+        // A household with more than one child opens on "All": a parent of
+        // four signing in wants the whole picture first, not whichever child
+        // happened to sort first. A single-child family has nothing to
+        // aggregate, so it opens on that child and the switcher is hidden.
+        this.activeChildId = this.students.length > 1
+            ? GuardianSession.ALL
+            : (this.students[0]?.id || null);
     }
 
     isAuthenticated() {
@@ -102,14 +116,48 @@ class GuardianSession {
     /** The single-child-scoped view every portal page reads from — every
      * page imports this instead of re-deriving "which child" itself, the
      * same way every staff page reads session.branch() rather than each
-     * tracking its own copy. */
+     * tracking its own copy.
+     *
+     * Returns null while "All children" is selected. Callers that genuinely
+     * need one child should use selectedChildren() instead, which covers both
+     * cases without a special branch. */
     activeChild() {
+        if (this.showingAll()) return null;
         return this.child(this.activeChildId) || this.students[0] || null;
+    }
+
+    /**
+     * "All children" — a real selection, not the absence of one.
+     *
+     * `activeChildId === ALL` rather than null, because null is also what a
+     * freshly-hydrated session holds before anything is chosen, and the two
+     * mean different things: one is "show me everyone", the other is "nothing
+     * chosen yet, fall back to the first child". Conflating them made the
+     * switcher unable to tell a deliberate All from a default.
+     */
+    showingAll() {
+        return this.activeChildId === GuardianSession.ALL;
+    }
+
+    /**
+     * The children every page should render — one, or all of them.
+     *
+     * This is the API the v3 portal pages read. A page that shows a single
+     * child's record renders an array of one; a page showing All renders the
+     * same markup per child. Neither has to ask which mode it is in, which is
+     * what keeps "All" from becoming a branch in six different files.
+     */
+    selectedChildren() {
+        if (this.showingAll()) return this.students;
+        const one = this.activeChild();
+        return one ? [one] : this.students;
     }
 
     setActiveChild(studentId) {
         if (studentId === this.activeChildId) return;
-        if (!this.students.some((s) => s.id === studentId)) return;
+        // ALL is always valid; a specific id must belong to this guardian.
+        if (studentId !== GuardianSession.ALL
+            && !this.students.some((s) => s.id === studentId)) return;
         this.activeChildId = studentId;
         bus.emit(EVENTS.PORTAL_CHILD_CHANGED, { studentId });
     }

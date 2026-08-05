@@ -29,34 +29,45 @@ export default class PortalTimetablePage extends Page {
         this.events.on(EVENTS.PORTAL_CHILD_CHANGED, () => this.paint());
     }
 
+    /**
+     * A card per selected child. No merged week view under "All children":
+     * with four children in different batches a single combined grid is
+     * harder to read than four small cards, and the question a parent asks
+     * here is "when does Sara go", not "what does our week look like".
+     *
+     * Needs no fetch at all — each student carries its own `batchSchedule`
+     * (see students.service.js's batchScheduleOf), which is why this page has
+     * paint() rather than load().
+     */
     paint() {
-        const student = guardianSession.activeChild();
-        const schedule = student?.batchSchedule;
+        const students = guardianSession.selectedChildren();
+        const many = students.length > 1;
 
         render(this.container, html`
-            <header class="page-header">
-                <div class="page-header-text">
-                    <h1 class="page-title">Timetable</h1>
-                    <p class="page-subtitle">${student?.name || ''}</p>
+
+            ${students.length ? html`
+                <div class="m-stack">
+                    ${students.map((student) => {
+                        const schedule = student.batchSchedule;
+                        return html`
+                            <div class="m-card"><div class="m-card-inner">
+                                ${many ? html`<p class="p-child-name">${student.name}</p>` : ''}
+                                ${schedule ? html`
+                                    <h3 class="m-card-title">${schedule.name}</h3>
+                                    <p class="m-card-meta">${levelLabel(schedule.level)}</p>
+                                    <ul class="p-portal-list">
+                                        ${(schedule.days || []).map((d) => html`
+                                            <li>${DAY_LABELS[d] || d} · ${schedule.startTime}–${schedule.endTime}</li>
+                                        `)}
+                                    </ul>
+                                ` : html`
+                                    <p style="margin:0;">${student.name} is not currently placed in a batch.</p>
+                                `}
+                            </div></div>
+                        `;
+                    })}
                 </div>
-            </header>
-            <div class="page-body">
-                ${schedule ? html`
-                    <div class="card"><div class="card-body">
-                        <h3 class="type-strong">${schedule.name}</h3>
-                        <p class="type-caption type-muted">${levelLabel(schedule.level)}</p>
-                        <ul class="mt-2">
-                            ${(schedule.days || []).map((d) => html`
-                                <li>${DAY_LABELS[d] || d} · ${schedule.startTime}–${schedule.endTime}</li>
-                            `)}
-                        </ul>
-                    </div></div>
-                ` : html`
-                    <div class="card"><div class="card-body">
-                        ${student?.name || 'This child'} is not currently placed in a batch.
-                    </div></div>
-                `}
-            </div>
+            ` : html`<div class="m-card m-empty">No classes to show.</div>`}
         `);
     }
 }

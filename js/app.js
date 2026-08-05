@@ -61,34 +61,10 @@ const PORTAL_PAGES = {
     '/portal/attendance': () => import('./modules/portal/attendance.page.js'),
     '/portal/programmes': () => import('./modules/portal/programmes.page.js'),
     '/portal/certificates': () => import('./modules/portal/certificates.page.js'),
-    '/portal/fees': () => import('./modules/portal/fees.page.js')
+    '/portal/fees': () => import('./modules/portal/fees.page.js'),
+    '/portal/profile': () => import('./modules/portal/profile.page.js')
 };
 
-/**
- * The portal is carried over from the reference app unchanged (already
- * mobile-first, already read-only), which means it is styled against v2's
- * shell.css / components.css / modules.css rather than v3's glass layer.
- *
- * Those three stylesheets are therefore loaded **only when a guardian session
- * actually starts**, not from index.html. Two reasons: a staff session should
- * not download ~2,800 lines of CSS it never uses, and the two design systems
- * never coexist in one document, so neither can bleed into the other. The
- * cost is one extra round trip at guardian sign-in, which is once per session.
- */
-function loadPortalStyles() {
-    return Promise.all(['shell', 'components', 'modules'].map((name) => new Promise((resolve) => {
-        const href = `assets/css/${name}.css`;
-        if (document.querySelector(`link[href="${href}"]`)) { resolve(); return; }
-        const link = document.createElement('link');
-        link.rel = 'stylesheet';
-        link.href = href;
-        // Resolve either way: a missing stylesheet should degrade the portal's
-        // appearance, never prevent a parent from reading their child's record.
-        link.onload = resolve;
-        link.onerror = () => { console.error(`Could not load ${href}`); resolve(); };
-        document.head.append(link);
-    })));
-}
 
 /** Staff roles this app serves. Administrator belongs to natyam-admin. */
 const MOBILE_STAFF_ROLES = new Set(['owner_accountant', 'teacher_reception']);
@@ -425,8 +401,11 @@ function enterStaffApp() {
  * portal has no need of.
  */
 async function enterPortal() {
-    await loadPortalStyles();
-
+    // loadPortalStyles() is gone (Stage 7). The portal was the last thing in
+    // this app pulling v2's shell.css/components.css/modules.css, and it now
+    // renders in the same v3 language as every other shell — so there is
+    // nothing left to lazily fetch, and no way for those stylesheets to creep
+    // back in behind one screen.
     const root = document.querySelector('#app');
     const portalRouter = new Router({
         isAuthenticated: () => guardianSession.isAuthenticated(),

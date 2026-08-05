@@ -30,58 +30,100 @@ export default class PortalFeesPage extends Page {
         this.events.on(EVENTS.PORTAL_CHILD_CHANGED, () => this.load());
     }
 
+    /**
+     * Unlike Attendance and Certificates, the fee summary is computed per
+     * student, so "All children" genuinely costs one call each — run in
+     * parallel, and each one allowed to fail on its own so a single broken
+     * summary does not blank the whole page.
+     */
     async load() {
-        const student = guardianSession.activeChild();
-        if (!student) { render(this.container, this.shell(null, null)); return; }
+        const students = guardianSession.selectedChildren();
+        if (!students.length) { render(this.container, this.page([])); return; }
 
-        const fees = await guardianFeeSummary(guardianSession.phone, guardianSession.email, student);
+        const results = await Promise.all(students.map((s) =>
+            guardianFeeSummary(guardianSession.phone, guardianSession.email, s).catch(() => null)));
         if (this.disposed) return;
-        render(this.container, this.shell(student, fees));
+
+        render(this.container, this.page(students.map((student, i) => ({ student, fees: results[i] }))));
     }
 
-    shell(student, fees) {
+    page(blocks) {
+        const many = blocks.length > 1;
+
+        // What a parent of four actually wants first is the household total —
+        // "how much do I owe" is one question, not four. The per-child
+        // breakdown follows for anyone who needs to see where it sits.
+        const totals = blocks.reduce((sum, b) => ({
+            outstanding: sum.outstanding + (b.fees?.outstanding || 0),
+            overdue: sum.overdue + (b.fees?.overdue || 0)
+        }), { outstanding: 0, overdue: 0 });
+
         return html`
-            <header class="page-header">
-                <div class="page-header-text">
-                    <h1 class="page-title">Fees</h1>
-                    <p class="page-subtitle">${student?.name || ''}</p>
+
+            ${many ? html`
+                <div class="m-stack" style="margin-bottom:20px;">
+                    <h2 class="m-section-label">Household total</h2>
+                    <div class="m-stack">
+                        <div class="m-card"><div class="m-card-inner">
+                            <div class="m-card-meta">Outstanding</div>
+                            <div class="m-card-title">${formatMoney(totals.outstanding)}</div>
+                        </div></div>
+                        <div class="m-card"><div class="m-card-inner">
+                            <div class="m-card-meta">Overdue</div>
+                            <div class="m-card-title">${formatMoney(totals.overdue)}</div>
+                        </div></div>
+                    </div>
                 </div>
-            </header>
-            <div class="page-body">
+            ` : ''}
+
+            ${blocks.length
+                ? blocks.map(({ student, fees }) => html`
+                    <section style="margin-bottom:20px;">
+                        ${many ? html`<h2 class="m-section-label">${student.name}</h2>` : ''}
+                        ${this.childFees(fees)}
+                    </section>
+                `)
+                : html`<div class="m-card m-empty">No fee records yet.</div>`}
+        `;
+    }
+
+    childFees(fees) {
+        return html`
+            <div class="m-stack">
                 ${fees ? html`
-                    <div class="grid grid-4">
-                        <div class="card"><div class="card-body">
-                            <div class="type-caption type-muted">Billed</div>
-                            <div class="type-strong">${formatMoney(fees.billed)}</div>
+                    <div class="m-stack">
+                        <div class="m-card"><div class="m-card-inner">
+                            <div class="m-card-meta">Billed</div>
+                            <div class="m-card-title">${formatMoney(fees.billed)}</div>
                         </div></div>
-                        <div class="card"><div class="card-body">
-                            <div class="type-caption type-muted">Collected</div>
-                            <div class="type-strong">${formatMoney(fees.collected)}</div>
+                        <div class="m-card"><div class="m-card-inner">
+                            <div class="m-card-meta">Collected</div>
+                            <div class="m-card-title">${formatMoney(fees.collected)}</div>
                         </div></div>
-                        <div class="card"><div class="card-body">
-                            <div class="type-caption type-muted">Outstanding</div>
-                            <div class="type-strong">${formatMoney(fees.outstanding)}</div>
+                        <div class="m-card"><div class="m-card-inner">
+                            <div class="m-card-meta">Outstanding</div>
+                            <div class="m-card-title">${formatMoney(fees.outstanding)}</div>
                         </div></div>
-                        <div class="card"><div class="card-body">
-                            <div class="type-caption type-muted">Overdue</div>
-                            <div class="type-strong">${formatMoney(fees.overdue)}</div>
+                        <div class="m-card"><div class="m-card-inner">
+                            <div class="m-card-meta">Overdue</div>
+                            <div class="m-card-title">${formatMoney(fees.overdue)}</div>
                         </div></div>
                     </div>
                     ${fees.oldestDue ? html`
-                        <p class="type-caption type-muted mt-2">Oldest amount due: ${formatDate(fees.oldestDue)}</p>
+                        <p class="m-card-meta" style="margin-top:8px;">Oldest amount due: ${formatDate(fees.oldestDue)}</p>
                     ` : ''}
-                    <div class="card mt-2"><div class="card-body">
-                        <h3 class="type-strong">History</h3>
+                    <div class="m-card" style="margin-top:12px;"><div class="m-card-inner">
+                        <h3 class="m-card-title">History</h3>
                         ${fees.timeline?.length ? html`
-                            <ul class="mt-2">
+                            <ul style="margin-top:12px;">
                                 ${fees.timeline.map((event) => html`
-                                    <li class="mt-1">
+                                    <li style="margin-top:6px;">
                                         ${formatDate(event.at)} — ${event.title}
                                         ${event.amount != null ? html` (${formatMoney(event.amount)})` : ''}
                                     </li>
                                 `)}
                             </ul>
-                        ` : html`<p class="type-caption type-muted mt-2">No fee activity recorded yet.</p>`}
+                        ` : html`<p class="m-card-meta" style="margin-top:8px;">No fee activity recorded yet.</p>`}
                     </div></div>
                 ` : ''}
             </div>
