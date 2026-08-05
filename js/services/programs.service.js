@@ -109,6 +109,13 @@ export async function complete(id, { attendees = null, income = 0, expenditure =
             type: 'income',
             amount: earned,
             narration: `${program.name} — receipts`,
+            // ENH-308 — a multi-branch programme posts its money to the
+            // PRIMARY branch (branchIds[0]), not split across them. Splitting
+            // would mean inventing an apportionment rule — by headcount? by
+            // ticket sales nobody records per branch? — and an arbitrary rule
+            // in the ledger is worse than a simple one that is written down.
+            // The programme record names every branch it ran at, so the
+            // attribution is always traceable.
             branchId: program.branchId,
             sourceType: 'program',
             sourceId: program.id
@@ -251,7 +258,18 @@ export async function removeParticipant(id, studentId) {
  */
 export async function eligibleStudents(programOrId) {
     const program = typeof programOrId === 'string' ? await programs$.findOrFail(programOrId) : programOrId;
-    const roster = await students$.active(program.branchId);
+
+    // ENH-308 — the cast can be drawn from every branch the programme runs at.
+    // One query per branch rather than a whole-school read: a school-wide
+    // programme should not be the thing that starts fetching every student in
+    // the database on a phone.
+    //
+    // De-duplicated by id, because a student cannot be in two branches but the
+    // guard costs nothing and a repeated name in a cast list is the kind of
+    // thing that gets noticed on stage.
+    const rosters = await Promise.all(branchesOf(program).map((id) => students$.active(id)));
+    const roster = [...new Map(rosters.flat().map((s) => [s.id, s])).values()];
+
     const chosen = new Set(program.participants || []);
 
     return roster
@@ -270,7 +288,10 @@ export async function eligibleStudents(programOrId) {
 
 /** The programme list, enriched for display. */
 export async function listPrograms(branchId = null, { from = null, to = null, type = null, status = null } = {}) {
-    let rows = (await programs$.all()).filter((p) => !branchId || p.branchId === branchId);
+    // ENH-308 — a programme is visible at every branch it runs at, not only
+    // the first one stored. runsAtBranch() also covers programmes written
+    // before branchIds existed.
+    let rows = (await programs$.all()).filter((p) => runsAtBranch(p, branchId));
 
     if (from) rows = rows.filter((p) => p.date >= from);
     if (to) rows = rows.filter((p) => p.date <= to);
@@ -285,7 +306,16 @@ export async function listPrograms(branchId = null, { from = null, to = null, ty
         .map((program) => ({
             ...program,
             typeLabel: programTypes().find((t) => t.value === program.type)?.label || program.type,
-            branchName: branchName.get(program.branchId) || '—',
+            // ENH-308 — "Kondapur" for one branch, "Kondapur + 2 more" for
+            // several. The full list is on the detail; a row has no room for
+            // three branch names and the count is what tells a reader this is
+            // a school-wide programme at a glance.
+            branchName: (() => {
+                const names = branchesOf(program).map((id) => branchName.get(id)).filter(Boolean);
+                if (!names.length) return '—';
+                return names.length === 1 ? names[0] : `${names[0]} + ${names.length - 1} more`;
+            })(),
+            branchNames: branchesOf(program).map((id) => branchName.get(id)).filter(Boolean),
             leadName: staffName.get(program.leadStaffId) || null,
             participantCount: program.participants?.length ?? program.participantCount ?? 0,
             daysAway: program.date >= localDate() ? daysBetween(localDate(), program.date) : null,
@@ -297,12 +327,17 @@ export async function listPrograms(branchId = null, { from = null, to = null, ty
 /** Everything the programme detail view needs. */
 export async function programDetail(id) {
     const program = await programs$.findOrFail(id);
-    const [participants, branch, lead, certs] = await Promise.all([
+    // ENH-308 — every branch, not just the primary one. `branch` stays as the
+    // first for callers that show a single name; `branches` is the full list.
+    const [participants, branches, lead, certs] = await Promise.all([
         Promise.all((program.participants || []).map((sid) => students$.find(sid))),
-        program.branchId ? branches$.find(program.branchId) : null,
+        Promise.all(branchesOf(program).map((bid) => branches$.find(bid))),
         program.leadStaffId ? staff$.find(program.leadStaffId) : null,
         certificates$.all()
     ]);
+
+    const branchList = branches.filter(Boolean);
+    const branch = branchList[0] || null;
 
     const cast = participants.filter(Boolean).sort((a, b) => a.name.localeCompare(b.name, 'en-IN'));
 
@@ -313,6 +348,10 @@ export async function programDetail(id) {
             daysAway: program.date >= localDate() ? daysBetween(localDate(), program.date) : null
         },
         branch,
+        // ENH-308. `branch` is the primary and stays for callers that show one
+        // name; `branches` is every branch the programme runs at, which is what
+        // a detail screen should list.
+        branches: branchList,
         lead,
         participants: cast,
         byLevel: LEVELS
@@ -365,15 +404,51 @@ export async function programSummary(branchId = null) {
 /* ------------------------------------------------------------------ HELPERS */
 
 function normalise(data) {
+    // ENH-308. A programme can run at several branches. `branchIds` is the
+    // truth; `branchId` is kept as its first entry so every already-stored
+    // programme, and the whole desktop app, keep working without a migration —
+    // see branchesOf() for the read side.
+    //
+    // "All branches" is expanded to an explicit list by the caller, never
+    // stored as a flag. A branch opened next year must not retroactively join
+    // a programme scheduled today: that would silently change who is eligible
+    // for its cast and which branch its income was attributed to, months after
+    // the fact.
+    const branchIds = [...new Set(
+        (Array.isArray(data.branchIds) && data.branchIds.length ? data.branchIds : [data.branchId])
+            .filter(Boolean)
+    )];
+
     return {
         ...data,
         name: String(data.name || '').trim(),
         venue: data.venue?.trim() || null,
         description: data.description?.trim() || null,
+        branchIds,
+        branchId: branchIds[0] || null,
         participants: Array.isArray(data.participants) ? [...new Set(data.participants)] : [],
         income: Math.round(Number(data.income) || 0),
         expenditure: Math.round(Number(data.expenditure) || 0)
     };
+}
+
+/**
+ * Every branch a programme runs at.
+ *
+ * The one place the old and new shapes are reconciled, so no caller has to
+ * know that programmes written before ENH-308 carry only `branchId`. Reading
+ * through this — rather than touching either field directly — is what lets
+ * this change ship without a migration.
+ */
+export function branchesOf(program) {
+    if (Array.isArray(program?.branchIds) && program.branchIds.length) return program.branchIds;
+    return program?.branchId ? [program.branchId] : [];
+}
+
+/** Does this programme run at the given branch? A null branch means "any". */
+export function runsAtBranch(program, branchId) {
+    if (!branchId) return true;
+    return branchesOf(program).includes(branchId);
 }
 
 function assertShape(program) {
@@ -381,6 +456,8 @@ function assertShape(program) {
     if (!program.date) throw new Error('A programme needs a date.');
     if (!program.type) throw new Error('Choose a programme type.');
     if (!programTypes().some((t) => t.value === program.type)) throw new Error(`"${program.type}" is not a recognised programme type.`);
+    // normalise() derives branchId from branchIds, so checking it covers both
+    // — a programme with an empty branch list fails here too.
     if (!program.branchId) throw new Error('Choose which branch is running this.');
     if (program.type === 'examination' && !program.level) throw new Error('An examination is held for a specific level.');
     if (program.income < 0 || program.expenditure < 0) throw new Error('Amounts cannot be negative.');

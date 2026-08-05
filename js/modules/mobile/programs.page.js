@@ -583,10 +583,25 @@ export default class MobileProgramsPage extends Page {
               value: existing?.type },
             { name: 'date', label: 'Date', type: 'date', required: true,
               value: existing?.date || localDate() },
-            { name: 'branchId', label: 'Branch', type: 'select', required: true,
-              placeholder: branches.length > 1 ? 'Choose a branch' : null,
+            // ENH-308 — a programme can run at one branch, several, or all of
+            // them. `checks` rather than a select, because with two or three
+            // branches every option is visible at once and picking two is one
+            // tap each; a multi-select on a phone hides the choices behind a
+            // control most people do not know is multi-select.
+            //
+            // A single-branch school gets it pre-ticked and never thinks about
+            // it. "All branches" is not a magic value — ticking every box IS
+            // all branches, and it stores those ids explicitly, so a branch
+            // opened next year does not retroactively join this programme.
+            { name: 'branchIds', label: 'Branches', type: 'checks', required: true,
+              itemNoun: 'branch',
               options: branches.map((b) => ({ value: b.id, label: b.name })),
-              value: defaultBranchId },
+              help: branches.length > 1
+                  ? 'Tick every branch taking part. The cast can then be drawn from all of them.'
+                  : null,
+              value: existing?.branchIds?.length
+                  ? existing.branchIds
+                  : (defaultBranchId ? [defaultBranchId] : []) },
             // Required by the service for examinations only — hence showIf,
             // which also keeps the validator off it for every other type.
             { name: 'level', label: 'Level examined', type: 'select', placeholder: 'Choose a level',
