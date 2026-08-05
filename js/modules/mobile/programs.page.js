@@ -229,7 +229,12 @@ export default class MobileProgramsPage extends Page {
 
                     <dl class="m-facts">
                         ${fact('Venue', p.venue || '—')}
-                        ${fact('Branch', d.branch?.name || '—')}
+                        <!-- ENH-308 — the list row abbreviates to "Kondapur +
+                             2 more"; the detail names them all. -->
+                        ${fact(d.branches?.length > 1 ? 'Branches' : 'Branch',
+                            d.branches?.length
+                                ? d.branches.map((b) => b.name).join(', ')
+                                : (d.branch?.name || '—'))}
                         ${fact('Led by', d.lead?.name || 'Not assigned')}
                         ${fact('Taking part', formatNumber(d.participants.length))}
                         ${p.status === PROGRAM_STATUS.COMPLETED ? fact('Net', formatMoney(d.net)) : ''}
