@@ -32,6 +32,7 @@ import { households, householdSummary, updateStudent } from '../../services/stud
 import { CAPABILITIES } from '../../config/app.config.js';
 import { formModal } from '../../ui/form.js';
 import { toast } from '../../ui/toast.js';
+import { filterBar, renderFilterPanel, bindFilterToggle } from '../../ui/filterBar.js';
 
 /** Filter pills, in the order a phone user reaches for them. */
 const FILTERS = [
@@ -99,29 +100,26 @@ export default class MobileParentsPage extends Page {
     }
 
     paint() {
-        const rows = this.visibleRows();
-        const s = this.stats || {};
-
-        render(this.container, html`
-            <div class="m-subhead">
-                <div class="m-subhead-row">
-                    <label class="m-search">
-                        ${raw(icon('search', { size: 15 }))}
-                        <span class="sr-only">Search households</span>
-                        <input type="search" data-role="search" placeholder="Search parent, phone or child…">
-                    </label>
-                </div>
-                <p class="m-subhead-note">
-                    ${rows.length} of ${this.groups.length} household${this.groups.length === 1 ? '' : 's'}
-                    ${s.totalOutstanding ? ` · ${formatMoneyShort(s.totalOutstanding)} owed` : ''}
-                </p>
-                <div class="m-chip-scroll">
+        const filterPanel = html`
+            <div class="m-chip-scroll">
                     ${FILTERS.map((f) => html`
                         <button class="m-pill" data-action="filter" data-key="${f.key || ''}"
                                 aria-pressed="${this.filter === f.key ? 'true' : 'false'}">${f.label}</button>
                     `)}
                 </div>
-            </div>
+        `;
+
+        const rows = this.visibleRows();
+        const s = this.stats || {};
+
+        render(this.container, html`
+            ${filterBar({
+                placeholder: 'Search parent, phone or child…',
+                label: 'Search households',
+                open: this.filtersOpen,
+                note: html`${rows.length} of ${this.groups.length} household${this.groups.length === 1 ? '' : 's'}
+                    ${s.totalOutstanding ? ` · ${formatMoneyShort(s.totalOutstanding)} owed` : ''}`
+            })}
 
             ${s.missingPhone ? html`
                 <div class="m-notice" data-tone="negative" style="margin-bottom:10px;">
@@ -157,6 +155,8 @@ export default class MobileParentsPage extends Page {
 
             <div data-role="sheet"></div>
         `);
+
+        renderFilterPanel(this.container, this.filtersOpen, filterPanel);
 
         this.paintSheet();
     }
@@ -250,6 +250,8 @@ export default class MobileParentsPage extends Page {
 
     bind() {
         const root = this.container;
+
+        bindFilterToggle(this, () => this.paint());
 
         this.onDispose(on(root, 'click', '[data-action="filter"]', (_e, t) => {
             const key = t.dataset.key || null;

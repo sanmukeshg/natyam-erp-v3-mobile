@@ -35,6 +35,7 @@ import { availableTeachers } from '../../services/staff.service.js';
 import { listBranches } from '../../services/settings.service.js';
 import { curriculum, levelsOf, CAPABILITIES } from '../../config/app.config.js';
 import { formModal, confirmModal } from '../../ui/form.js';
+import { filterBar, renderFilterPanel, bindFilterToggle } from '../../ui/filterBar.js';
 import { localDate } from '../../utils/date.js';
 
 const FILTERS = [
@@ -97,25 +98,24 @@ export default class MobileBatchesPage extends Page {
     }
 
     paint() {
-        const rows = this.visibleRows();
-
-        render(this.container, html`
-            <div class="m-subhead">
-                <div class="m-subhead-row">
-                    <label class="m-search">
-                        ${raw(icon('search', { size: 15 }))}
-                        <span class="sr-only">Search batches</span>
-                        <input type="search" data-role="search" placeholder="Search name, teacher, level…">
-                    </label>
-                </div>
-                <p class="m-subhead-note">${rows.length} of ${this.rows.length} batches</p>
-                <div class="m-chip-scroll">
+        const filterPanel = html`
+            <div class="m-chip-scroll">
                     ${FILTERS.map((f) => html`
                         <button class="m-pill" data-action="filter" data-key="${f.key || ''}"
                                 aria-pressed="${this.filter === f.key ? 'true' : 'false'}">${f.label}</button>
                     `)}
                 </div>
-            </div>
+        `;
+
+        const rows = this.visibleRows();
+
+        render(this.container, html`
+            ${filterBar({
+                placeholder: 'Search name, teacher, level…',
+                label: 'Search batches',
+                open: this.filtersOpen,
+                note: html`${rows.length} of ${this.rows.length} batches`
+            })}
 
             <div class="m-stack">
                 ${rows.length ? rows.map((b) => html`
@@ -138,6 +138,8 @@ export default class MobileBatchesPage extends Page {
                 `) : html`<div class="m-card m-empty">No batch matches that.</div>`}
             </div>
         `);
+
+        renderFilterPanel(this.container, this.filtersOpen, filterPanel);
     }
 
     /* --------------------------------------------------------------- DETAIL */
@@ -331,6 +333,8 @@ export default class MobileBatchesPage extends Page {
 
     bind() {
         const root = this.container;
+
+        bindFilterToggle(this, () => this.paint());
 
         this.onDispose(on(root, 'click', '[data-action="filter"]', (_e, t) => {
             const key = t.dataset.key || null;

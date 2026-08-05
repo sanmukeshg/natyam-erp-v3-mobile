@@ -38,6 +38,7 @@ import { PAYMENT_MODES } from '../../config/app.config.js';
 import { listStudents } from '../../services/students.service.js';
 import { collectionSummary, studentFeeSummary, recordPayment, waiveInvoice } from '../../services/fees.service.js';
 import { formModal } from '../../ui/form.js';
+import { filterBar, renderFilterPanel, bindFilterToggle } from '../../ui/filterBar.js';
 
 const FILTERS = [
     { key: null, label: 'Everyone' },
@@ -148,28 +149,25 @@ export default class MobileFeesPage extends Page {
     }
 
     paint() {
-        const rows = this.visibleRows();
-        const s = this.summary;
-
-        render(this.container, html`
-            <div class="m-subhead">
-                <div class="m-subhead-row">
-                    <label class="m-search">
-                        ${raw(icon('search', { size: 15 }))}
-                        <span class="sr-only">Search students</span>
-                        <input type="search" data-role="search" placeholder="Search name, guardian, phone…">
-                    </label>
-                </div>
-                <p class="m-subhead-note">
-                    ${s ? `${formatMoney(s.collected)} collected this month · ${rows.length} shown` : ''}
-                </p>
-                <div class="m-chip-scroll">
+        const filterPanel = html`
+            <div class="m-chip-scroll">
                     ${FILTERS.map((item) => html`
                         <button class="m-pill" data-action="filter" data-key="${item.key || ''}"
                                 aria-pressed="${this.filter === item.key ? 'true' : 'false'}">${item.label}</button>
                     `)}
                 </div>
-            </div>
+        `;
+
+        const rows = this.visibleRows();
+        const s = this.summary;
+
+        render(this.container, html`
+            ${filterBar({
+                placeholder: 'Search name, guardian, phone…',
+                label: 'Search students',
+                open: this.filtersOpen,
+                note: html`${s ? `${formatMoney(s.collected)} collected this month · ${rows.length} shown` : ''}`
+            })}
 
             ${s ? html`
                 <div class="m-kpi-strip" style="margin-top:12px;">
@@ -195,6 +193,8 @@ export default class MobileFeesPage extends Page {
                 `) : html`<div class="m-card m-empty">Nobody matches that.</div>`}
             </div>
         `);
+
+        renderFilterPanel(this.container, this.filtersOpen, filterPanel);
     }
 
     /* --------------------------------------------------------------- LEDGER */
@@ -464,6 +464,8 @@ export default class MobileFeesPage extends Page {
 
     bind() {
         const root = this.container;
+
+        bindFilterToggle(this, () => this.paint());
 
         this.onDispose(on(root, 'click', '[data-action="filter"]', (_e, t) => {
             const key = t.dataset.key || null;

@@ -23,6 +23,7 @@ import { Page } from '../../core/router.js';
 import { html, render, raw, on, debounce } from '../../utils/dom.js';
 import { icon } from '../../ui/icons.js';
 import { toast } from '../../ui/toast.js';
+import { filterBar, renderFilterPanel, bindFilterToggle } from '../../ui/filterBar.js';
 import { session } from '../../core/session.js';
 import { EVENTS } from '../../core/bus.js';
 import { formatMoney, formatMoneyShort, formatNumber } from '../../utils/money.js';
@@ -90,30 +91,27 @@ export default class MobileStaffPage extends Page {
     }
 
     paint() {
-        const rows = this.visibleRows();
-        const s = this.stats || {};
-
-        render(this.container, html`
-            <div class="m-subhead">
-                <div class="m-subhead-row">
-                    <label class="m-search">
-                        ${raw(icon('search', { size: 15 }))}
-                        <span class="sr-only">Search staff</span>
-                        <input type="search" data-role="search" placeholder="Search name, role…">
-                    </label>
-                </div>
-                <p class="m-subhead-note">
-                    ${rows.length} of ${this.rows.length} on staff
-                    ${s.teachers ? ` · ${formatNumber(s.teachers)} teaching` : ''}
-                    ${s.monthlyWageBill ? ` · ${formatMoneyShort(s.monthlyWageBill)} a month` : ''}
-                </p>
-                <div class="m-chip-scroll">
+        const filterPanel = html`
+            <div class="m-chip-scroll">
                     ${FILTERS.map((f) => html`
                         <button class="m-pill" data-action="filter" data-key="${f.key || ''}"
                                 aria-pressed="${this.filter === f.key ? 'true' : 'false'}">${f.label}</button>
                     `)}
                 </div>
-            </div>
+        `;
+
+        const rows = this.visibleRows();
+        const s = this.stats || {};
+
+        render(this.container, html`
+            ${filterBar({
+                placeholder: 'Search name, role…',
+                label: 'Search staff',
+                open: this.filtersOpen,
+                note: html`${rows.length} of ${this.rows.length} on staff
+                    ${s.teachers ? ` · ${formatNumber(s.teachers)} teaching` : ''}
+                    ${s.monthlyWageBill ? ` · ${formatMoneyShort(s.monthlyWageBill)} a month` : ''}`
+            })}
 
             ${rows.length ? html`
                 <div class="m-stack">
@@ -145,6 +143,8 @@ export default class MobileStaffPage extends Page {
 
             <div data-role="sheet"></div>
         `);
+
+        renderFilterPanel(this.container, this.filtersOpen, filterPanel);
 
         this.paintSheet();
     }
@@ -250,6 +250,8 @@ export default class MobileStaffPage extends Page {
 
     bind() {
         const root = this.container;
+
+        bindFilterToggle(this, () => this.paint());
 
         this.onDispose(on(root, 'click', '[data-action="filter"]', (_e, t) => {
             const key = t.dataset.key || null;

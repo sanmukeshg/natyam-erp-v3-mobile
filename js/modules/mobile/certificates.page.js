@@ -39,6 +39,7 @@ import { listStudents } from '../../services/students.service.js';
 import { listPrograms, PROGRAM_STATUS } from '../../services/programs.service.js';
 import { formModal, confirmModal } from '../../ui/form.js';
 import { toast } from '../../ui/toast.js';
+import { filterBar, renderFilterPanel, bindFilterToggle } from '../../ui/filterBar.js';
 import { localDate } from '../../utils/date.js';
 
 const FILTERS = [
@@ -102,28 +103,25 @@ export default class MobileCertificatesPage extends Page {
     }
 
     paint() {
-        const rows = this.visibleRows();
-        const s = this.stats || {};
-
-        render(this.container, html`
-            <div class="m-subhead">
-                <div class="m-subhead-row">
-                    <label class="m-search">
-                        ${raw(icon('search', { size: 15 }))}
-                        <span class="sr-only">Search certificates</span>
-                        <input type="search" data-role="search" placeholder="Search serial or student…">
-                    </label>
-                </div>
-                <p class="m-subhead-note">
-                    ${rows.length} of ${this.rows.length} issued${s.revoked ? ` · ${formatNumber(s.revoked)} revoked` : ''}
-                </p>
-                <div class="m-chip-scroll">
+        const filterPanel = html`
+            <div class="m-chip-scroll">
                     ${FILTERS.map((f) => html`
                         <button class="m-pill" data-action="filter" data-key="${f.key || ''}"
                                 aria-pressed="${this.filter === f.key ? 'true' : 'false'}">${f.label}</button>
                     `)}
                 </div>
-            </div>
+        `;
+
+        const rows = this.visibleRows();
+        const s = this.stats || {};
+
+        render(this.container, html`
+            ${filterBar({
+                placeholder: 'Search serial or student…',
+                label: 'Search certificates',
+                open: this.filtersOpen,
+                note: html`${rows.length} of ${this.rows.length} issued${s.revoked ? ` · ${formatNumber(s.revoked)} revoked` : ''}`
+            })}
 
             <!-- First, not buried: answering "is this real" down a telephone is
                  the reason this screen is worth having on a handset. -->
@@ -162,6 +160,8 @@ export default class MobileCertificatesPage extends Page {
 
             <div data-role="sheet"></div>
         `);
+
+        renderFilterPanel(this.container, this.filtersOpen, filterPanel);
 
         this.paintSheet();
     }
@@ -270,6 +270,8 @@ export default class MobileCertificatesPage extends Page {
 
     bind() {
         const root = this.container;
+
+        bindFilterToggle(this, () => this.paint());
 
         this.onDispose(on(root, 'click', '[data-action="filter"]', (_e, t) => {
             const key = t.dataset.key || null;

@@ -41,6 +41,7 @@ import {
 } from '../../services/admissions.service.js';
 import { listBranches, listFeePlans } from '../../services/settings.service.js';
 import { formModal } from '../../ui/form.js';
+import { filterBar, renderFilterPanel, bindFilterToggle } from '../../ui/filterBar.js';
 
 const FILTERS = [
     { key: null, label: 'All' },
@@ -69,6 +70,9 @@ export default class MobileAdmissionsPage extends Page {
         this.rows = [];
         this.filter = this.query.filter || null;
         this.search = '';
+        // Open only when arriving on a filtered link, so the panel explains
+        // why the list is already narrowed — the same rule Students uses.
+        this.filtersOpen = Boolean(this.filter);
         this.detail = null;
         this.busy = false;
     }
@@ -129,25 +133,30 @@ export default class MobileAdmissionsPage extends Page {
         const rows = this.visibleRows();
         const stats = this.stats;
 
-        render(this.container, html`
-            <div class="m-subhead">
-                <div class="m-subhead-row">
-                    <label class="m-search">
-                        ${raw(icon('search', { size: 15 }))}
-                        <span class="sr-only">Search applications</span>
-                        <input type="search" data-role="search" placeholder="Search name, guardian, phone…">
-                    </label>
-                </div>
-                <p class="m-subhead-note">
-                    ${stats ? `${stats.awaitingAction} awaiting action · ${rows.length} shown` : ''}
-                </p>
-                <div class="m-chip-scroll">
-                    ${FILTERS.map((item) => html`
-                        <button class="m-pill" data-action="filter" data-key="${item.key || ''}"
-                                aria-pressed="${this.filter === item.key ? 'true' : 'false'}">${item.label}</button>
-                    `)}
-                </div>
+        // Painted after the main render below, because filterBar() leaves an
+        // empty [data-role="filter-panel"] for it to fill.
+        const panel = html`
+            <div class="m-chip-scroll">
+                ${FILTERS.map((item) => html`
+                    <button class="m-pill" data-action="filter" data-key="${item.key || ''}"
+                            aria-pressed="${this.filter === item.key ? 'true' : 'false'}">${item.label}</button>
+                `)}
             </div>
+        `;
+
+        render(this.container, html`
+            <!--
+              ENH-304/306 — the standard filter bar, shared with every other
+              module (js/ui/filterBar.js). Admissions previously had a search
+              field with no funnel and its status pills always on show; they
+              now hide behind the funnel like everywhere else.
+            -->
+            ${filterBar({
+                placeholder: 'Search name, guardian, phone…',
+                label: 'Search applications',
+                open: this.filtersOpen,
+                note: stats ? `${stats.awaitingAction} awaiting action · ${rows.length} shown` : ''
+            })}
 
             ${stats ? html`
                 <div class="m-kpi-strip" style="margin-top:12px;">
@@ -198,6 +207,8 @@ export default class MobileAdmissionsPage extends Page {
                 </button>
             ` : ''}
         `);
+
+        renderFilterPanel(this.container, this.filtersOpen, panel);
     }
 
     /* --------------------------------------------------------------- DETAIL */
@@ -389,28 +400,42 @@ export default class MobileAdmissionsPage extends Page {
         const app = this.detail?.application;
         if (!app || this.busy) return;
 
-        const reason = window.prompt(`Why is ${app.name}'s application being rejected?`);
-        if (reason === null) return;
-        if (!reason.trim()) { toast.error('A reason is required to reject an application.'); return; }
+        // ENH-305. The desktop screen uses window.prompt() here and calls that
+        // deliberate — "a bespoke dialog for one field is not worth the surface
+        // area". That reasoning does not carry to a phone: formModal is already
+        // imported and used in this same file, so there is no surface area to
+        // save, and a native prompt in an installed PWA is an OS dialog that
+        // looks nothing like the app it interrupts.
+        //
+        // The reason is required by reject() itself, so an empty one is refused
+        // by the service rather than only by this form.
+        const done = await formModal({
+            title: `Reject ${app.name}'s application?`,
+            description: 'The family will be told. It stays on record and can be reopened later.',
+            submitLabel: 'Reject application',
+            fields: [
+                { name: 'reason', label: 'Why', type: 'textarea', rows: 3, required: true,
+                  help: 'Kept on the application — the family will ask.' }
+            ],
+            values: { reason: '' },
+            onSubmit: (v) => reject(app.id, { reason: v.reason })
+        });
 
-        this.busy = true;
-        this.paintDetail();
-        try {
-            await reject(app.id, { reason: reason.trim() });
-            toast.success('Application rejected', app.name);
-            this.busy = false;
-            this.detail = null;
-            await this.load();
-        } catch (err) {
-            this.busy = false;
-            if (this.disposed) return;
-            toast.error(err.message);
-            this.paintDetail();
-        }
+        // formModal resolves only once onSubmit has succeeded, and shows any
+        // error from reject() inside the dialog itself — so there is nothing
+        // left to catch here, and no busy flag to manage: the dialog owns that
+        // while it is open.
+        if (!done) return;
+
+        toast.success('Application rejected', app.name);
+        this.detail = null;
+        await this.load();
     }
 
     bind() {
         const root = this.container;
+
+        bindFilterToggle(this, () => this.paint());
 
         this.onDispose(on(root, 'click', '[data-action="filter"]', (_e, t) => {
             const key = t.dataset.key || null;
