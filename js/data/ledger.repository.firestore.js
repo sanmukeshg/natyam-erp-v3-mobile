@@ -68,11 +68,31 @@ class FirestoreLedgerRepository {
         return { ...record, period: record.period || monthKey(record.date), amount: Math.round(Number(record.amount) || 0) };
     }
 
+    /*
+     * A NEGATIVE amount is a contra entry, and it is how a reversal is
+     * recorded — see reverseEntry() and postRefund().
+     *
+     * The rule used to be `amount > 0`, with the sign carried entirely by
+     * `type`: reversing income meant writing an expense of the same amount.
+     * Arithmetically the net came out right, and the classification was wrong
+     * — a refunded fee appeared as ₹1,500 of Expenditure the school never
+     * spent, so Income overstated what was collected and Expenditure invented
+     * a cost. A fee reversal is a reversal of income, never an expense.
+     *
+     * So a reversal now keeps the ORIGINAL type and carries a negative amount,
+     * which reduces the category it came from. summarise(), byAccount() and
+     * the running balance all sum by type and needed no change for this —
+     * they were already doing the right arithmetic on whatever sign they were
+     * given.
+     *
+     * Zero is still refused: it is never a real posting, and it is what an
+     * empty or unparsed amount collapses to.
+     */
     validate(record) {
         if (!record.date) throw new Error('A ledger entry needs a date.');
         if (!record.account) throw new Error('A ledger entry needs an account.');
         if (!['income', 'expense'].includes(record.type)) throw new Error('A ledger entry is either income or expense.');
-        if (record.amount <= 0) throw new Error('A ledger entry must be more than zero.');
+        if (!record.amount) throw new Error('A ledger entry cannot be zero.');
     }
 
     /* ---------------------------------------------------------------- READS */
@@ -394,16 +414,26 @@ export async function postRefund({ paymentId, reason, refundedOn, actor }) {
             updatedBy: actor
         }) : null;
 
+        /*
+         * Income, negative — not an expense.
+         *
+         * This wrote `type: 'expense'` with a positive amount, so refunding a
+         * ₹1,500 fee posted ₹1,500 of Expenditure the school never spent while
+         * Income kept claiming the ₹1,500 it no longer had. Net came out right
+         * and both sides of the report were wrong. A fee is income; unwinding
+         * it reduces income.
+         */
         const contra = {
             branchId: payment.branchId,
             date: refundedOn,
             period: monthKey(refundedOn),
             account: 'Tuition fees',
-            type: 'expense',
-            amount: payment.amount,
+            type: 'income',
+            amount: -payment.amount,
             narration: `Refund of receipt ${payment.receiptNo} — ${reason}`,
             sourceType: 'refund',
             sourceId: payment.id,
+            reversalOf: payment.id,
             createdAt: at, createdBy: actor, updatedAt: at, updatedBy: actor
         };
 

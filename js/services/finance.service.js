@@ -117,16 +117,29 @@ export async function reverseEntry(id, { reason }) {
     if (original.reversedBy) throw new Error('This entry has already been reversed.');
     if (!reason?.trim()) throw new Error('A reversal needs a reason.');
 
+    /*
+     * Same type, negative amount — a contra entry, not an opposite one.
+     *
+     * This flipped income to expense and kept the amount positive, so
+     * reversing a ₹1,500 fee left Income still claiming ₹1,500 and invented
+     * ₹1,500 of Expenditure the school never spent. The net came out right and
+     * both halves of the report were wrong. Reversing income reduces income.
+     *
+     * `reversalOf` is the audit link back to the entry being undone, matching
+     * the `reversedBy` pointer written onto that entry just below — the pair
+     * is navigable from either end.
+     */
     const contra = await ledger$.create({
         date: localDate(),
         period: monthKey(localDate()),
         account: original.account,
-        type: original.type === 'income' ? 'expense' : 'income',
-        amount: original.amount,
+        type: original.type,
+        amount: -Math.abs(original.amount),
         narration: `Reversal of ${original.narration} — ${reason.trim()}`,
         branchId: original.branchId,
         sourceType: 'reversal',
-        sourceId: original.id
+        sourceId: original.id,
+        reversalOf: original.id
     });
 
     await ledger$.update(id, { reversedBy: contra.id, reversedOn: localDate(), reversalReason: reason.trim() });
