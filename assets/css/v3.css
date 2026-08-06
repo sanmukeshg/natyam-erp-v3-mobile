@@ -1457,6 +1457,26 @@ a.m-attn:hover { text-decoration: none; }
 
 :root { --v3-chrome: #3d1f11; }
 
+/*
+ * The same measurement taken at the other end: #22100a is the average of the
+ * BOTTOM 24 rows of login-mobile-bg.jpg, where --v3-chrome is the average of
+ * the top.
+ *
+ * Both are needed because the two ends of this artwork are not the same
+ * colour — the top is a lit wall, the bottom is a dark carved floor. --v3-chrome
+ * is correct for the status bar, which sits over the wall, and wrong for
+ * anything at the bottom by roughly the difference between #3d1f11 and
+ * #22100a. That difference is the band: iOS gives the page 797pt of an 844pt
+ * screen and fills the remainder itself, and it was filling it with the top
+ * colour against the bottom of the picture.
+ *
+ * This is the same trick the landing screen has always used — its own fill is
+ * #140907, sampled from intro-mobile.jpg's bottom edge — and it is exactly why
+ * the landing is the one screen with no visible band while the shell, the boot
+ * screen and sign-in all show one.
+ */
+:root { --v3-chrome-bottom: #22100a; }
+
 html, body {
     /*
      * The artwork, not a flat colour.
@@ -1475,7 +1495,7 @@ html, body {
      * shrinks when the keyboard opens, and a short body would band regardless
      * of what colour it is.
      */
-    background: var(--v3-chrome) var(--v3-backdrop) center / cover no-repeat;
+    background: var(--v3-chrome-bottom) var(--v3-backdrop) center / cover no-repeat;
     min-height: 100%;
 }
 
