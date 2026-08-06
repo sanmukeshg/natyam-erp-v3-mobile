@@ -374,7 +374,22 @@ export default class MobileStudentsPage extends Page {
              * picking Kondapur still offered Hafeezpet's classes and the service
              * would have accepted the mismatch.
              */
-            { name: 'batchId', label: 'Batch', type: 'select', placeholder: 'Place later',
+            /*
+             * Required on create, optional when editing.
+             *
+             * "Place later" was the old placeholder, and its own help text says
+             * what that costs: a student with no batch appears on no register,
+             * so they are enrolled and then invisible to attendance. Required
+             * here for the same reason the fee plan below is — the unbilled,
+             * unregistered student is never what anyone intended.
+             *
+             * Editing keeps it optional: moving a student out of a batch
+             * temporarily is a real thing to do, and blocking it would make
+             * every unrelated edit impossible for a student between batches.
+             */
+            { name: 'batchId', label: 'Batch', type: 'select',
+              required: !existing,
+              placeholder: existing ? 'Not placed' : 'Choose a batch',
               options: (v) => open
                   .filter((b) => !v.branchId || b.branchId === v.branchId)
                   .map((b) => ({
@@ -383,10 +398,24 @@ export default class MobileStudentsPage extends Page {
                            + (b.capacity && b.enrolled >= b.capacity ? ' (full)' : '')
                   })),
               help: 'Only batches at the chosen branch. A student with no batch appears on no register.' },
+            /*
+             * Required, and still create-only.
+             *
+             * It was optional, defaulting to "No plan" — and a student created
+             * without one is never billed at all, silently: raiseSchedule() is
+             * only ever reached when a plan exists, so no plan means no
+             * schedule, no invoice, and nothing on screen saying why. Nobody
+             * picks that on purpose, so the form stops offering it.
+             *
+             * Absent when editing, unchanged: choosing a plan raises the
+             * schedule immediately, which is right as a student is created and
+             * wrong as a side effect of correcting a phone number.
+             */
             ...(existing ? [] : [
-                { name: 'feePlanId', label: 'Fee plan', type: 'select', placeholder: 'No plan',
+                { name: 'feePlanId', label: 'Fee plan', type: 'select', required: true,
+                  placeholder: 'Choose a fee plan',
                   options: plans.map((p) => ({ value: p.id, label: `${p.name} — ${formatMoney(p.amount)}` })),
-                  help: 'Choosing one raises the fee schedule immediately.' }
+                  help: 'Raises the fee schedule immediately.' }
             ]),
             { name: 'joinedOn', label: 'Joined on', type: 'date' },
 

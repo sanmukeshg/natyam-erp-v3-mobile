@@ -214,8 +214,17 @@ export default class MobileAdmissionsPage extends Page {
 
     async open(id) {
         try {
-            this.detail = await applicationDetail(id);
+            // Fee plans come along with the detail because the enrol step needs
+            // them and cannot ask for them mid-render. Fetched in parallel, and
+            // failing softly: a plan list that could not load must not stop
+            // someone opening an application to read it.
+            const [detail, plans] = await Promise.all([
+                applicationDetail(id),
+                listFeePlans().catch(() => [])
+            ]);
             if (this.disposed) return;
+            this.detail = detail;
+            this.feePlans = plans;
             this.paintDetail();
         } catch (err) {
             toast.error(`Could not open that application — ${err.message}`);
@@ -229,6 +238,22 @@ export default class MobileAdmissionsPage extends Page {
         else this.paint();
     }
 
+    /**
+     * The enrol step asks for a batch AND a fee plan, both required.
+     *
+     * The fee plan is asked here because this is the only moment it can be.
+     * enrolApplicant() bills through feePlanId, falling back to the
+     * application's own — and a family applying through the Natyam app never
+     * supplies one, because the public form does not ask. So a self-submitted
+     * applicant was enrolled with no plan, and enrolApplicant's own
+     * `if (raiseFees && planId)` then skipped billing entirely: no schedule,
+     * no invoice, no message. The student simply showed zero fees forever.
+     *
+     * Nothing afterwards could set it either — Edit student hides the fee plan
+     * field by design, since choosing one raises the schedule on the spot and
+     * that is wrong as a side effect of fixing a phone number. So this step is
+     * where it has to happen.
+     */
     paintDetail() {
         let host = this.container.querySelector('[data-role="sheet"]');
         if (!host) {
@@ -323,8 +348,8 @@ export default class MobileAdmissionsPage extends Page {
 
                     ${enrolling ? html`
                         <label class="m-facts" style="gap:8px;">
-                            <span style="color:var(--v3-muted);font-size:11.5px;">Enrol into which batch?</span>
-                            <select data-role="batch"
+                            <span style="color:var(--v3-muted);font-size:11.5px;">Enrol into which batch? *</span>
+                            <select data-role="batch" required
                                     style="width:100%;min-height:var(--v3-tap);background:rgba(255,255,255,0.08);color:var(--v3-name);border:1px solid var(--v3-card-border);border-radius:10px;font:inherit;padding:0 10px;">
                                 <option value="">Choose a batch…</option>
                                 ${(eligibleBatches || []).map((batch) => html`
@@ -337,6 +362,25 @@ export default class MobileAdmissionsPage extends Page {
                         ${eligibleBatches?.length ? '' : html`
                             <div class="m-notice" data-tone="caution">
                                 No batch matches this level yet.
+                            </div>
+                        `}
+
+                        <label class="m-facts" style="gap:8px;">
+                            <span style="color:var(--v3-muted);font-size:11.5px;">On which fee plan? *</span>
+                            <select data-role="fee-plan" required
+                                    style="width:100%;min-height:var(--v3-tap);background:rgba(255,255,255,0.08);color:var(--v3-name);border:1px solid var(--v3-card-border);border-radius:10px;font:inherit;padding:0 10px;">
+                                <option value="">Choose a fee plan…</option>
+                                ${(this.feePlans || []).map((plan) => html`
+                                    <option value="${plan.id}"
+                                            ${plan.id === app.feePlanId ? 'selected' : ''}>
+                                        ${plan.name} — ${formatMoney(plan.amount)}
+                                    </option>
+                                `)}
+                            </select>
+                        </label>
+                        ${this.feePlans?.length ? '' : html`
+                            <div class="m-notice" data-tone="caution">
+                                No fee plans are set up yet — add one in Settings before enrolling.
                             </div>
                         `}
                     ` : ''}
@@ -462,10 +506,21 @@ export default class MobileAdmissionsPage extends Page {
             toast.error('Choose a batch', 'An applicant is enrolled into a batch, so one has to be picked first.');
             return;
         }
+
+        // Both required, and checked here rather than trusted to the markup:
+        // these are bare <select>s in a sheet, not a <form>, so `required` on
+        // them is a hint to the reader and nothing enforces it on submit.
+        const feePlanId = this.container.querySelector('[data-role="fee-plan"]')?.value;
+        if (!feePlanId) {
+            toast.error('Choose a fee plan',
+                'Without one the student is enrolled but never billed — no schedule, no invoice.');
+            return;
+        }
+
         this.busy = true;
         this.paintDetail();
         try {
-            await enrolApplicant(app.id, { batchId });
+            await enrolApplicant(app.id, { batchId, feePlanId });
             toast.success('Enrolled', `${app.name} is now a student.`);
             this.busy = false;
             this.detail = null;
