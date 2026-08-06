@@ -379,7 +379,9 @@ export async function reopen(id) {
  * @param {string} [options.joinedOn]       Defaults to today.
  * @param {boolean} [options.raiseFees=true]
  */
-export async function enrolApplicant(admissionId, { batchId, feePlanId = null, joinedOn = null, raiseFees = true } = {}) {
+export async function enrolApplicant(admissionId, {
+    batchId, feePlanId = null, branchId = null, joinedOn = null, raiseFees = true
+} = {}) {
     session.require('admission.approve', 'enrol an applicant');
 
     const admission = await admissions$.findOrFail(admissionId);
@@ -387,8 +389,26 @@ export async function enrolApplicant(admissionId, { batchId, feePlanId = null, j
     if (admission.status === ADMISSION_STATUS.ENROLLED) {
         throw new Error(`${admission.name} has already been enrolled.`);
     }
-    if (admission.status !== ADMISSION_STATUS.APPROVED) {
-        throw new Error(`Approve this application before enrolling — it is currently ${statusLabel(admission.status)}.`);
+    /*
+     * Enrolling straight from `submitted` is the normal path now.
+     *
+     * Begin review and Approve were two separate confirmations before this one,
+     * and the school does not work that way: the person reading the application
+     * is the person deciding, in one sitting. Both stages are gone from the UI,
+     * so requiring `approved` here would have made every application
+     * un-enrollable. REVIEWING and APPROVED stay accepted rather than being
+     * dropped, because records already sitting in those states from the old
+     * flow must still be completable — this loosens the gate, it does not move
+     * it. DRAFT is still refused (nobody has submitted it yet) and so is
+     * REJECTED, which has to be reopened first.
+     */
+    const enrollable = [
+        ADMISSION_STATUS.SUBMITTED,
+        ADMISSION_STATUS.REVIEWING,
+        ADMISSION_STATUS.APPROVED
+    ];
+    if (!enrollable.includes(admission.status)) {
+        throw new Error(`This application is ${statusLabel(admission.status)} and cannot be enrolled.`);
     }
     // Every enrolled student belongs to a batch. The picker offers every active
     // batch at the branch — ranked so the applicant's own level comes first —
@@ -409,9 +429,38 @@ export async function enrolApplicant(admissionId, { batchId, feePlanId = null, j
     const plan = planId ? await feePlans$.find(planId) : null;
     if (planId && !plan) throw new Error('The chosen fee plan no longer exists. Pick another.');
 
+    /*
+     * The branch, and the NAT/APP number, both used to be beginReview()'s job.
+     * With that stage gone this is the first and only moment a member of staff
+     * touches a self-submitted application, so the two things it closed have to
+     * close here or not at all.
+     *
+     * A parent supplies `preferredBranch` as a NAME and never a branchId —
+     * /branches is staff-gated and the public Branches page carries no ids by
+     * design — so the caller passes the real one and it fills the gap. Never
+     * overwrites: an application that already has a branch keeps it.
+     */
+    const resolvedBranchId = admission.branchId || branchId || null;
+    if (!resolvedBranchId) {
+        throw new Error('Choose the branch being applied to before enrolling.');
+    }
+
     const year = academicYearOf().start;
     const seq = await settings$.nextSequence('admission');
     const actor = session.actorId();
+
+    /*
+     * NAT/APP, only when missing. A staff-taken application is numbered at
+     * creation; a self-submitted one arrives with `applicationNo: null`,
+     * because the sequence lives behind staff-gated /settings and a parent
+     * cannot allocate from it. beginReview() issued it — so without this, every
+     * family application would reach enrolment unnumbered and stay that way,
+     * and the product would have lost one of its two numbering guarantees.
+     * Allocating only when absent means no application ever burns a second
+     * sequence value or changes a reference a family has already been given.
+     */
+    const applicationNo = admission.applicationNo
+        || sequenceNumber('NAT/APP', year, await settings$.nextSequence('application'));
 
     // Persisted through the Students repository (students$.create()) rather
     // than a hand-rolled write, so this goes wherever `students$` actually
@@ -460,7 +509,12 @@ export async function enrolApplicant(admissionId, { batchId, feePlanId = null, j
         status: ADMISSION_STATUS.ENROLLED,
         enrolledOn: localDate(),
         enrolledBy: actor,
-        studentId: student.id
+        studentId: student.id,
+        // Both written back so the closed application is a complete record of
+        // what was decided — and because admissions$.update() validates
+        // branchId, which a self-submitted application does not yet carry.
+        branchId: resolvedBranchId,
+        applicationNo
     });
 
     await recordAuditEntry('Admission', 'enrol', admission.id,
@@ -680,11 +734,30 @@ export async function applicationDetail(id) {
 }
 
 /** What a person can do next with an application in this state. */
+/*
+ * One step from submitted to enrolled.
+ *
+ * This was submitted -> Begin review -> Approve -> Enrol: three taps and two
+ * intermediate states before a child was on a register. The school does not
+ * work that way — the person reading the application is the person deciding,
+ * in one sitting — so Begin review and Approve are gone and `submitted` offers
+ * Enrol directly.
+ *
+ * REVIEWING and APPROVED still map to Enrol rather than being removed.
+ * Applications parked in those states under the old flow have to remain
+ * completable; dropping them would have left real records with no action at
+ * all and no way to reach one.
+ *
+ * beginReview() and approve() are deliberately still exported. Nothing in
+ * either app calls them now, but they are the audited, sequence-allocating
+ * paths those states were reached by, and deleting them would strand any
+ * record still in them.
+ */
 export function nextActionFor(status) {
     return {
         [ADMISSION_STATUS.DRAFT]: { key: 'submit', label: 'Submit application' },
-        [ADMISSION_STATUS.SUBMITTED]: { key: 'review', label: 'Begin review' },
-        [ADMISSION_STATUS.REVIEWING]: { key: 'approve', label: 'Approve' },
+        [ADMISSION_STATUS.SUBMITTED]: { key: 'enrol', label: 'Enrol' },
+        [ADMISSION_STATUS.REVIEWING]: { key: 'enrol', label: 'Enrol' },
         [ADMISSION_STATUS.APPROVED]: { key: 'enrol', label: 'Enrol' },
         [ADMISSION_STATUS.ENROLLED]: null,
         [ADMISSION_STATUS.REJECTED]: { key: 'reopen', label: 'Reopen' }

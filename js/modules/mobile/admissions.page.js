@@ -34,9 +34,13 @@ import { EVENTS } from '../../core/bus.js';
 import { formatDate, formatDateLong } from '../../utils/date.js';
 import { ADMISSION_STATUS, curriculum, CAPABILITIES } from '../../config/app.config.js';
 import { formatMoney } from '../../utils/money.js';
+/* beginReview and approve are deliberately NOT imported here any more: Begin
+   review and Approve are gone from the flow (see nextActionFor) and nothing on
+   this screen calls them. Both remain exported by the service, for records
+   still parked in those states from before the change. */
 import {
     pipeline, listApplications, applicationDetail,
-    beginReview, approve, reject, reopen, enrolApplicant,
+    reject, reopen, enrolApplicant,
     submit as submitApplication, validateStep, ADMISSION_STEPS
 } from '../../services/admissions.service.js';
 import { listBranches, listFeePlans } from '../../services/settings.service.js';
@@ -425,7 +429,7 @@ export default class MobileAdmissionsPage extends Page {
      * for, so it asks instead.
      *
      * Returns a branch id, or null if the person backed out — never a partial
-     * write. beginReview() only ever fills a gap, so passing one for an
+     * write. enrolApplicant() only ever fills a gap, so passing one for an
      * application that already has a branch cannot overwrite it.
      */
     async askForBranch(app) {
@@ -467,25 +471,14 @@ export default class MobileAdmissionsPage extends Page {
         if (!app || this.busy) return;
         if (key === 'enrol') return this.enrol(app);
 
-        // Asked BEFORE the busy flag, so the sheet stays interactive behind the
-        // dialog and a cancel leaves the screen exactly as it was.
-        let branchId = null;
-        if (key === 'review' && !app.branchId) {
-            try {
-                branchId = await this.askForBranch(app);
-            } catch (err) {
-                toast.error(err.message);
-                return;
-            }
-            if (!branchId) return;          // backed out — nothing written
-        }
-
         this.busy = true;
         this.paintDetail();
         try {
-            if (key === 'review') await beginReview(app.id, { branchId });
-            else if (key === 'approve') await approve(app.id);
-            else if (key === 'reopen') await reopen(app.id);
+            // 'review' and 'approve' are no longer reachable — nextActionFor()
+            // sends every submitted application straight to Enrol. The service
+            // still exports both for records parked in those states under the
+            // old flow, but nothing on this screen offers them.
+            if (key === 'reopen') await reopen(app.id);
             else throw new Error(`"${key}" is not something this screen can do yet.`);
 
             toast.success('Application updated', app.name);
@@ -517,10 +510,32 @@ export default class MobileAdmissionsPage extends Page {
             return;
         }
 
+        /*
+         * The branch, for a family-submitted application that has none.
+         *
+         * This used to be asked at Begin review. With that stage gone, enrolment
+         * is the only moment a member of staff sees the application at all, so
+         * the question moves here. Asked BEFORE the busy flag so the sheet stays
+         * as it was if the person backs out — nothing is written either way.
+         *
+         * A staff-taken application already carries a real branchId and is never
+         * asked.
+         */
+        let branchId = null;
+        if (!app.branchId) {
+            try {
+                branchId = await this.askForBranch(app);
+            } catch (err) {
+                toast.error(err.message);
+                return;
+            }
+            if (!branchId) return;          // backed out — nothing written
+        }
+
         this.busy = true;
         this.paintDetail();
         try {
-            await enrolApplicant(app.id, { batchId, feePlanId });
+            await enrolApplicant(app.id, { batchId, feePlanId, branchId });
             toast.success('Enrolled', `${app.name} is now a student.`);
             this.busy = false;
             this.detail = null;

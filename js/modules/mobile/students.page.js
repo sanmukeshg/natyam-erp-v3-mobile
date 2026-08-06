@@ -425,7 +425,11 @@ export default class MobileStudentsPage extends Page {
               options: ['Mother', 'Father', 'Grandparent', 'Guardian', 'Sibling']
                   .map((r) => ({ value: r, label: r })) },
             { name: 'guardianPhone', label: 'Phone', type: 'tel', required: true },
-            { name: 'guardianEmail', label: 'Email', type: 'email' },
+            /* Required. It is the guardian's sign-in identity for the Parent
+               Portal — students.repository matches a portal account by
+               guardianEmail — so a student saved without one has a family that
+               cannot reach the app at all. */
+            { name: 'guardianEmail', label: 'Email', type: 'email', required: true },
             { name: 'address', label: 'Address', type: 'textarea', rows: 2 },
 
             { type: 'divider', label: 'Health and notes' },
