@@ -12,16 +12,18 @@
  * `batchDetail()` already returns and the order that answers the question
  * being asked.
  *
- * EDITING (UAT BUG-601). An owner standing in the studio does need to fix a
- * room, a time or a teacher without walking to a desktop, so the sheet carries
- * an Edit action. It uses the same field list, the same service call and the
- * same clash-override confirmation the desktop app does — a phone is a smaller
- * screen, not a laxer one.
+ * CREATING AND EDITING (UAT BUG-601, then a later request to add creation
+ * alongside it). An owner standing in the studio does need to open a new
+ * batch or fix a room, a time or a teacher without walking to a desktop, so
+ * the list carries an Add FAB and the sheet an Edit action. Both use the same
+ * field list, the same service calls and the same clash-override confirmation
+ * the desktop app does — a phone is a smaller screen, not a laxer one.
  *
- * Creating, closing and reopening batches are still desktop-only: closing asks
- * where the enrolled students go, which is not a decision to make between
- * sessions. This screen offers no disabled buttons for them — an action a phone
- * user should not be starting is better absent than greyed out.
+ * Closing and reopening stay desktop-only: closing asks where the enrolled
+ * students go, which is not a decision to make between sessions the way
+ * fixing a typo'd room number is. This screen offers no disabled buttons for
+ * them — an action a phone user should not be starting is better absent than
+ * greyed out.
  */
 
 import { Page } from '../../core/router.js';
@@ -30,7 +32,7 @@ import { icon } from '../../ui/icons.js';
 import { toast } from '../../ui/toast.js';
 import { session } from '../../core/session.js';
 import { EVENTS } from '../../core/bus.js';
-import { listBatches, batchDetail, updateBatch, WEEK } from '../../services/batches.service.js';
+import { listBatches, batchDetail, createBatch, updateBatch, WEEK } from '../../services/batches.service.js';
 import { availableTeachers } from '../../services/staff.service.js';
 import { listBranches } from '../../services/settings.service.js';
 import { curriculum, levelsOf, CAPABILITIES } from '../../config/app.config.js';
@@ -138,6 +140,14 @@ export default class MobileBatchesPage extends Page {
                     </button>
                 `) : html`<div class="m-card m-empty">No batch matches that.</div>`}
             </div>
+
+            ${session.can(CAPABILITIES.STUDENT_EDIT) ? html`
+                <button class="m-fab" data-action="add" aria-label="New batch">
+                    ${raw(icon('plus', { size: 24 }))}
+                </button>
+            ` : ''}
+
+            <div data-role="sheet"></div>
         `);
 
         renderFilterPanel(this.container, this.filtersOpen, filterPanel);
@@ -244,17 +254,25 @@ export default class MobileBatchesPage extends Page {
      * then rejected by the clash check a moment later. `excludeBatchId` stops
      * the batch clashing with itself.
      */
-    async batchFields(existing) {
+    async batchFields(existing = null) {
         const [teachers, branches] = await Promise.all([
-            availableTeachers({ branchId: session.branch(), excludeBatchId: existing.id }),
+            availableTeachers({ branchId: session.branch(), excludeBatchId: existing?.id || null }),
             listBranches()
         ]);
+
+        // A batch must belong to a branch, so the form supplies one rather
+        // than letting the service reject a create with none attached —
+        // matching natyam-admin's own batchFields() exactly.
+        const defaultBranchId = existing?.branchId
+            || session.branch()
+            || (branches.length === 1 ? branches[0].id : '');
 
         return [
             { name: 'name', label: 'Batch name', required: true },
             { name: 'code', label: 'Code', required: true, maxLength: 20,
               help: 'Short label used on registers and reports.' },
             { name: 'branchId', label: 'Branch', type: 'select', required: true,
+              placeholder: branches.length > 1 ? 'Choose a branch' : null,
               options: branches.map((b) => ({ value: b.id, label: b.name })) },
             { name: 'levels', label: 'Levels', type: 'checks', required: true, itemNoun: 'level',
               options: curriculum().map((l) => ({ value: l.value, label: l.label })),
@@ -280,9 +298,10 @@ export default class MobileBatchesPage extends Page {
             { name: 'notes', label: 'Notes', type: 'textarea', rows: 2 }
         ].map((f) => ({
             ...f,
-            value: f.name === 'levels'   ? levelsOf(existing)
-                 : f.name === 'startsOn' ? (existing.startsOn || localDate())
-                 : existing[f.name]
+            value: f.name === 'branchId' ? defaultBranchId
+                 : f.name === 'levels'   ? (existing ? levelsOf(existing) : [])
+                 : f.name === 'startsOn' ? (existing?.startsOn || localDate())
+                 : existing?.[f.name]
         }));
     }
 
@@ -307,6 +326,27 @@ export default class MobileBatchesPage extends Page {
             if (!proceed) throw err;
             return attempt(true);
         }
+    }
+
+    async newBatch() {
+        session.require(CAPABILITIES.STUDENT_EDIT, 'create a batch');
+        const fields = await this.batchFields();
+
+        const created = await formModal({
+            title: 'New batch',
+            description: 'A batch fixes a set of levels, a teacher and a slot in the week.',
+            submitLabel: 'Create batch',
+            fields,
+            values: Object.fromEntries(fields.map((f) =>
+                [f.name, f.value ?? (f.type === 'checks' ? [] : '')])),
+            onSubmit: (values) => this.saveWithConflictCheck(
+                (allowConflicts) => createBatch(values, { allowConflicts }))
+        });
+
+        if (!created) return;
+        toast.success(`${created.batch.name} created.`);
+        await this.load();
+        this.open(created.batch.id);
     }
 
     async editBatch() {
@@ -348,6 +388,7 @@ export default class MobileBatchesPage extends Page {
             this.paint();
         }, 180)));
 
+        this.onDispose(on(root, 'click', '[data-action="add"]', () => this.newBatch()));
         this.onDispose(on(root, 'click', '[data-action="open"]', (_e, t) => this.open(t.dataset.id)));
         this.onDispose(on(root, 'click', '[data-action="close-detail"]', () => this.close()));
         this.onDispose(on(root, 'click', '[data-action="edit-batch"]', () => this.editBatch()));
