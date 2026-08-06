@@ -47,7 +47,14 @@
     <meta name="mobile-web-app-capable" content="yes">
 
     <link rel="manifest" href="manifest.json">
-    <link rel="icon" href="assets/icons/icon.svg" type="image/svg+xml">
+    <!--
+      A raster favicon, not the SVG that used to be here. The SVG was a purple
+      ghungroo placeholder matching nothing else in the app, and because the
+      manifest listed it first with sizes="any" some Android launchers picked
+      it over the real icons — so replacing the artwork alone would have left
+      those phones still showing the placeholder.
+    -->
+    <link rel="icon" href="assets/icons/icon-48.png" sizes="48x48" type="image/png">
     <link rel="apple-touch-icon" href="assets/icons/icon-192.png">
 
     <link rel="stylesheet" href="assets/css/tokens.css">
