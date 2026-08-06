@@ -56,6 +56,7 @@ import {
     LedgerMath, ExpenseMath,
     postExpenseCreate, postExpenseUpdate, postExpenseRemove, postPayroll
 } from '../data/repositories.js';
+import { recordAuditEntry } from '../data/auditLog.repository.firestore.js';
 import { notify } from './notifications.service.js';
 
 /** Ledger accounts. Income accounts first, then expenditure. */
@@ -107,6 +108,75 @@ export async function postEntry({ date, account, type, amount, narration, branch
 }
 
 /**
+ * Edits a hand-typed ledger entry.
+ *
+ * MANUAL ENTRIES ONLY, and the restriction is the whole point. An entry with a
+ * sourceType is the shadow of another record — a payment, an expense, a payroll
+ * run — and editing it here would put the ledger out of step with the thing it
+ * describes, silently. Those are corrected from their own record: an expense
+ * through updateExpense(), which rewrites its ledger line in the same
+ * transaction; a payment through refundPayment().
+ *
+ * A hand-typed entry has no such twin. It answers to nobody, so it can be
+ * corrected in place — which is what the school asked for: a mistyped donation
+ * or ticket sale should be fixable, not reversed and re-entered.
+ */
+export async function updateEntry(id, changes) {
+    session.require('finance.edit', 'edit a ledger entry');
+
+    const existing = await ledger$.findOrFail(id);
+    if (existing.sourceType) {
+        throw new Error('This entry was posted by another module. Correct it from that record instead.');
+    }
+
+    const amount = changes.amount !== undefined ? Math.round(Number(changes.amount) || 0) : existing.amount;
+    if (amount <= 0) throw new Error('The amount must be more than zero.');
+
+    const date = changes.date || existing.date;
+    if (date > localDate()) throw new Error('A ledger entry cannot be dated in the future.');
+
+    const updated = await ledger$.update(id, {
+        ...changes,
+        amount,
+        date,
+        period: monthKey(date)
+    });
+
+    bus.emit(EVENTS.LEDGER_POSTED, { entry: updated });
+    return updated;
+}
+
+/**
+ * Deletes a hand-typed ledger entry outright.
+ *
+ * Same restriction and the same reasoning as updateEntry(). This is a real
+ * delete, not a contra — the school's decision, for entries they typed
+ * themselves. Anything posted by another module keeps the audit trail: it is
+ * reversed, or corrected from its source.
+ */
+export async function deleteEntry(id, { reason }) {
+    session.require('finance.edit', 'delete a ledger entry');
+
+    const existing = await ledger$.findOrFail(id);
+    if (existing.sourceType) {
+        throw new Error('This entry was posted by another module. Reverse it, or correct it from that record.');
+    }
+    if (!reason?.trim()) throw new Error('Say why this entry is being deleted.');
+
+    await recordAuditEntry('Ledger', 'delete', id, {
+        narration: existing.narration,
+        amount: existing.amount,
+        type: existing.type,
+        account: existing.account,
+        reason: reason.trim()
+    });
+
+    await ledger$.remove(id);
+    bus.emit(EVENTS.LEDGER_POSTED, { entry: null });
+    return true;
+}
+
+/**
  * Reverses an entry with a contra rather than deleting it. A ledger you can
  * delete from is not a ledger.
  */
@@ -118,23 +188,25 @@ export async function reverseEntry(id, { reason }) {
     if (!reason?.trim()) throw new Error('A reversal needs a reason.');
 
     /*
-     * Same type, negative amount — a contra entry, not an opposite one.
+     * Opposite type, positive amount — reversing income posts an expense.
      *
-     * This flipped income to expense and kept the amount positive, so
-     * reversing a ₹1,500 fee left Income still claiming ₹1,500 and invented
-     * ₹1,500 of Expenditure the school never spent. The net came out right and
-     * both halves of the report were wrong. Reversing income reduces income.
+     * This was briefly changed to a same-type negative (contra) entry, on the
+     * grounds that reversing income should reduce income rather than invent an
+     * expense. The school's decision is the other way: money going back out is
+     * expenditure, and they want to see it there. Reverted deliberately, not
+     * by accident — if the argument comes up again, that is the reason, and it
+     * is theirs to make.
      *
-     * `reversalOf` is the audit link back to the entry being undone, matching
-     * the `reversedBy` pointer written onto that entry just below — the pair
-     * is navigable from either end.
+     * `reversalOf` stays from that change. It is the audit link back to the
+     * entry being undone, pairing with the `reversedBy` pointer written onto
+     * that entry below so the two are navigable from either end.
      */
     const contra = await ledger$.create({
         date: localDate(),
         period: monthKey(localDate()),
         account: original.account,
-        type: original.type,
-        amount: -Math.abs(original.amount),
+        type: original.type === 'income' ? 'expense' : 'income',
+        amount: Math.abs(original.amount),
         narration: `Reversal of ${original.narration} — ${reason.trim()}`,
         branchId: original.branchId,
         sourceType: 'reversal',
@@ -220,6 +292,11 @@ export async function recordExpense(data) {
  * Edits an expense. The ledger entry is rewritten in the same atomic write, so
  * correcting an amount cannot leave the books quoting the old one.
  */
+/** One expense by id — the Ledger row needs it to open the edit form. */
+export async function getExpense(id) {
+    return expenses$.find(id);
+}
+
 export async function updateExpense(id, changes) {
     session.require('finance.edit', 'edit an expense');
 

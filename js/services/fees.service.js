@@ -25,12 +25,12 @@ import { bus, EVENTS } from '../core/bus.js';
 import { session } from '../core/session.js';
 import { formatMoney } from '../utils/money.js';
 import { sequenceNumber } from '../utils/id.js';
-import { localDate, addDays, academicYearOf } from '../utils/date.js';
+import { localDate, addDays, academicYearOf, monthKey } from '../utils/date.js';
 import {
     INVOICE_STATUS, PAYMENT_STATUS, PAYMENT_MODES, STUDENT_STATUS, feeFrequency
 } from '../config/app.config.js';
 import {
-    invoices$, payments$, students$, feePlans$, settings$, reconcile, postPayment, postRefund
+    invoices$, payments$, students$, feePlans$, settings$, ledger$, reconcile, postPayment, postRefund
 } from '../data/repositories.js';
 
 /* ==========================================================================
@@ -433,14 +433,54 @@ export async function waiveInvoice(invoiceId, { reason }) {
     if (invoice.status === INVOICE_STATUS.PAID) throw new Error('This invoice is already paid in full.');
     if (invoice.status === INVOICE_STATUS.CANCELLED) throw new Error('This invoice was cancelled.');
 
-    return invoices$.update(invoiceId, {
+    const waived = invoice.balance;
+
+    const updated = await invoices$.update(invoiceId, {
         status: INVOICE_STATUS.WAIVED,
-        waivedAmount: invoice.balance,
+        waivedAmount: waived,
         waiverReason: reason.trim(),
         waivedOn: localDate(),
         waivedBy: session.actorId(),
         balance: 0
     });
+
+    /*
+     * A waiver posts an EXPENSE, on the school's instruction.
+     *
+     * Worth being honest about what that does. This ledger recognises income
+     * when money arrives, not when an invoice is raised — so a waived fee was
+     * never counted as income in the first place. Posting the write-off as an
+     * expense therefore records a cost against income that was never there: the
+     * books show -1500 for a fee simply not collected, rather than 0. That is
+     * the school's decision, stated twice and explicitly, and it is written
+     * down here so nobody later reads it as an oversight and "corrects" it.
+     *
+     * Posted after the invoice is updated and deliberately not fatal — the
+     * waiver is what matters to the family, and a ledger that refuses the
+     * posting must not leave an invoice half-waived.
+     */
+    try {
+        // ledger$.create, not finance.service's postEntry(): that requires
+        // finance.edit, which a Teacher & Reception holding fee.waive does not
+        // have — routing through it would fail the ledger posting for exactly
+        // the people most likely to take a waiver. The waive permission checked
+        // at the top of this function is the authority here.
+        await ledger$.create({
+            type: 'expense',
+            account: 'Other',
+            amount: waived,
+            date: localDate(),
+            period: monthKey(localDate()),
+            narration: `Fee waived — ${invoice.number || 'invoice'} — ${reason.trim()}`,
+            branchId: invoice.branchId || null,
+            sourceType: 'waiver',
+            sourceId: invoiceId
+        });
+    } catch (err) {
+        console.error('The waiver saved, but its ledger entry did not', err);
+    }
+
+    return updated;
 }
 
 /** Cancels an unpaid invoice raised in error. Paid invoices must be refunded. */

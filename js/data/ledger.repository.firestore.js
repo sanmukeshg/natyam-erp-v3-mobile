@@ -37,12 +37,12 @@ import {
     collection, doc, addDoc, updateDoc, deleteDoc, query, where, writeBatch, runTransaction
 } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js';
 import { firestore } from '../core/firebase.js';
+import { getDoc, getDocs } from './firestoreRead.js';
 import { session } from '../core/session.js';
 import { recordAuditEntry } from './auditLog.repository.firestore.js';
 import { nowISO, monthKey } from '../utils/date.js';
 import { INVOICE_STATUS, PAYMENT_STATUS } from '../config/app.config.js';
 import { reconcile } from './invoices.repository.firestore.js';
-import { getDoc, getDocs } from './firestoreRead.js';
 
 const COLLECTION_NAME = 'ledgerEntries';
 const ledgerCollection = collection(firestore, COLLECTION_NAME);
@@ -69,30 +69,16 @@ class FirestoreLedgerRepository {
     }
 
     /*
-     * A NEGATIVE amount is a contra entry, and it is how a reversal is
-     * recorded — see reverseEntry() and postRefund().
-     *
-     * The rule used to be `amount > 0`, with the sign carried entirely by
-     * `type`: reversing income meant writing an expense of the same amount.
-     * Arithmetically the net came out right, and the classification was wrong
-     * — a refunded fee appeared as ₹1,500 of Expenditure the school never
-     * spent, so Income overstated what was collected and Expenditure invented
-     * a cost. A fee reversal is a reversal of income, never an expense.
-     *
-     * So a reversal now keeps the ORIGINAL type and carries a negative amount,
-     * which reduces the category it came from. summarise(), byAccount() and
-     * the running balance all sum by type and needed no change for this —
-     * they were already doing the right arithmetic on whatever sign they were
-     * given.
-     *
-     * Zero is still refused: it is never a real posting, and it is what an
-     * empty or unparsed amount collapses to.
+     * Amounts are always positive; the sign is carried by `type`. A reversal
+     * posts the OPPOSITE type rather than a negative of the same one — see
+     * reverseEntry() and postRefund(), and the school's decision recorded
+     * there.
      */
     validate(record) {
         if (!record.date) throw new Error('A ledger entry needs a date.');
         if (!record.account) throw new Error('A ledger entry needs an account.');
         if (!['income', 'expense'].includes(record.type)) throw new Error('A ledger entry is either income or expense.');
-        if (!record.amount) throw new Error('A ledger entry cannot be zero.');
+        if (record.amount <= 0) throw new Error('A ledger entry must be more than zero.');
     }
 
     /* ---------------------------------------------------------------- READS */
@@ -415,21 +401,20 @@ export async function postRefund({ paymentId, reason, refundedOn, actor }) {
         }) : null;
 
         /*
-         * Income, negative — not an expense.
+         * Expense, positive — money going back out is expenditure.
          *
-         * This wrote `type: 'expense'` with a positive amount, so refunding a
-         * ₹1,500 fee posted ₹1,500 of Expenditure the school never spent while
-         * Income kept claiming the ₹1,500 it no longer had. Net came out right
-         * and both sides of the report were wrong. A fee is income; unwinding
-         * it reduces income.
+         * Briefly changed to a negative income (contra) entry so a refund
+         * reduced income rather than posting a cost the school never incurred.
+         * The school wants it under Expenditure, which is where it started;
+         * reverted on their instruction. See reverseEntry()'s matching comment.
          */
         const contra = {
             branchId: payment.branchId,
             date: refundedOn,
             period: monthKey(refundedOn),
             account: 'Tuition fees',
-            type: 'income',
-            amount: -payment.amount,
+            type: 'expense',
+            amount: payment.amount,
             narration: `Refund of receipt ${payment.receiptNo} — ${reason}`,
             sourceType: 'refund',
             sourceId: payment.id,
