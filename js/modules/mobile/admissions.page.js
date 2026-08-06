@@ -244,22 +244,38 @@ export default class MobileAdmissionsPage extends Page {
         const enrolling = nextAction?.key === 'enrol';
         const allowed = nextAction ? this.canDo(nextAction.key, canEdit, canApprove) : false;
 
+        /*
+         * A centred dialog, not a bottom sheet — UAT4-BUG-003.
+         *
+         * This was .m-sheet-scrim + .m-profile: a sheet anchored to bottom:0,
+         * its action row sitting exactly where the tab bar sits. Raising the
+         * sheet above the bar by z-index was the obvious fix and it did not
+         * hold on iPhone, so this removes the collision instead of re-arguing
+         * the stacking order — the box is inset from every edge by the scrim's
+         * own padding (which already includes the safe-area inset), so nothing
+         * of it can reach the tab bar's strip at all.
+         *
+         * The classes are formModal's, reused verbatim rather than copied into
+         * a new variant: this is the same shape as the Add student dialog, so
+         * it should be the same markup, and any future change to that dialog's
+         * geometry lands here for free. No new CSS was written for this.
+         */
         render(host, html`
-            <div class="m-sheet-scrim" data-action="close-detail"></div>
-            <div class="m-profile" role="dialog" aria-modal="true" aria-label="${app.name}">
-                <div class="m-profile-head">
-                    <div style="min-width:0;">
-                        <h2 class="m-profile-name">${app.name}</h2>
-                        <p class="m-profile-sub">
-                            ${app.applicationNo || '—'} · ${level || '—'}
-                        </p>
+            <div class="m-modal-scrim" data-action="close-detail">
+                <div class="m-modal" role="dialog" aria-modal="true" aria-label="${app.name}">
+                    <div class="m-modal-head">
+                        <div style="min-width:0;">
+                            <h2 class="m-modal-title">${app.name}</h2>
+                            <p class="m-modal-sub">
+                                ${app.applicationNo || '—'} · ${level || '—'}
+                            </p>
+                        </div>
+                        <button class="m-modal-close" data-action="close-detail" aria-label="Close">
+                            ${raw(icon('x', { size: 16 }))}
+                        </button>
                     </div>
-                    <button class="m-icon-btn" data-action="close-detail" aria-label="Close">
-                        ${raw(icon('x', { size: 16 }))}
-                    </button>
-                </div>
 
-                <div class="m-profile-body">
+                <div class="m-modal-body">
                     <div><span class="m-badge" data-admission="${app.status}">${statusLabel}</span></div>
 
                     ${app.source === 'parent_portal' ? html`
@@ -326,17 +342,18 @@ export default class MobileAdmissionsPage extends Page {
                     ` : ''}
                 </div>
 
-                <div class="m-sheet-foot">
-                    ${app.status === ADMISSION_STATUS.REVIEWING || app.status === ADMISSION_STATUS.SUBMITTED ? html`
-                        <button class="m-btn m-btn-ghost" data-action="reject"
-                                ${canApprove && !this.busy ? '' : 'disabled'}>Reject</button>
-                    ` : ''}
-                    ${nextAction ? html`
-                        <button class="m-btn" style="flex:1;" data-action="advance" data-key="${nextAction.key}"
-                                ${allowed && !this.busy ? '' : 'disabled'}>
-                            ${this.busy ? 'Working…' : nextAction.label}
-                        </button>
-                    ` : html`<span class="m-profile-note" style="flex:1;">No further action — this application is closed.</span>`}
+                    <div class="m-modal-foot">
+                        ${app.status === ADMISSION_STATUS.REVIEWING || app.status === ADMISSION_STATUS.SUBMITTED ? html`
+                            <button class="m-btn m-btn-ghost" data-action="reject"
+                                    ${canApprove && !this.busy ? '' : 'disabled'}>Reject</button>
+                        ` : ''}
+                        ${nextAction ? html`
+                            <button class="m-btn" style="flex:1;" data-action="advance" data-key="${nextAction.key}"
+                                    ${allowed && !this.busy ? '' : 'disabled'}>
+                                ${this.busy ? 'Working…' : nextAction.label}
+                            </button>
+                        ` : html`<span class="m-profile-note" style="flex:1;">No further action — this application is closed.</span>`}
+                    </div>
                 </div>
             </div>
         `);
@@ -512,8 +529,19 @@ export default class MobileAdmissionsPage extends Page {
             this.paint();
         }, 180)));
         this.onDispose(on(root, 'click', '[data-action="open"]', (_e, t) => this.open(t.dataset.id)));
-        this.onDispose(on(root, 'click', '[data-action="close-detail"]', () => this.close()));
-        this.onDispose(on(root, 'click', '.m-profile', (event) => event.stopPropagation()));
+        /*
+         * The scrim now WRAPS the dialog rather than sitting beside it
+         * (UAT4-BUG-003), so a click anywhere inside the box bubbles up to the
+         * scrim's own data-action. `event.target !== target` is the guard
+         * formModal already uses for exactly this: close only on a click that
+         * landed on the scrim itself, not on something within it. The close
+         * button carries the same data-action and is handled below, where its
+         * own target check passes.
+         */
+        this.onDispose(on(root, 'click', '[data-action="close-detail"]', (event, target) => {
+            if (target.classList.contains('m-modal-scrim') && event.target !== target) return;
+            this.close();
+        }));
         this.onDispose(on(root, 'click', '[data-action="advance"]', (_e, t) => this.advance(t.dataset.key)));
         this.onDispose(on(root, 'click', '[data-action="reject"]', () => this.doReject()));
 
