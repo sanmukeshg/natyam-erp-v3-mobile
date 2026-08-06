@@ -30,17 +30,30 @@
     <!--
       iOS supports none of this through the manifest.
       `apple-mobile-web-app-capable` is what makes an installed app run without
-      Safari's chrome at all, and `black-translucent` is what lets the app's own
-      background extend UNDER the status bar rather than sitting below an
-      opaque strip — the brief's "the application background must extend into
-      the safe area".
+      Safari's chrome at all.
 
-      That is also exactly why v3.css's env(safe-area-inset-*) padding matters:
-      with black-translucent the web view owns those pixels, so without those
-      insets the app bar would render behind the clock.
+      NO `apple-mobile-web-app-status-bar-style`. It was set to
+      black-translucent on 5 Aug to satisfy the brief's "the application
+      background must extend into the safe area", and it did — at the cost of a
+      band of bare chrome colour across the bottom of every screen on iPhone.
+
+      black-translucent puts the web view under the status bar, and on iOS the
+      viewport is then still reported 47pt short — exactly the status bar's own
+      height. Content starts at y=0 as asked, but a 100dvh shell covers 797 of
+      an 844pt screen and the missing 47 lands at the bottom. Measured on the
+      device: screen 390x844, innerHeight 797, every viewport unit 797, and
+      safe-area insets reading 0px/0px, which is the signature of this state
+      rather than of a working one.
+
+      It only ever bites on a fresh install, because iOS reads these metas when
+      the app is added to the home screen and never again. That is why this was
+      invisible for a day: the meta shipped on the 5th, and the app was not
+      reinstalled until the 6th.
+
+      Omitted rather than set to "default" — omitting is what the file did
+      before the 5th, and that build was correct on this device.
     -->
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Natyam">
     <!-- The standardised replacement for Apple's prefixed flag. Both are
          needed: iOS still reads only its own. -->
