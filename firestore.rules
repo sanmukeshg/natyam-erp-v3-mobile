@@ -1038,7 +1038,20 @@ service cloud.firestore {
       // Only ever their own, and only their own email inside it. There is no
       // field here worth forging, but pinning the id to the caller keeps one
       // person from seeding a document under someone else's address.
-      allow create, update: if isOwnDoc(profileId)
+      //
+      // create also accepts isAdministrator(), never update. A restore
+      // (js/services/backup.service.js's resetEverything/restore) deletes
+      // every document first, so writing a backed-up profile back is always a
+      // CREATE in rules terms — never an update, and never anyone's own
+      // document, since the admin running the restore is not the parent.
+      // Administrator already holds unconditional delete on this exact
+      // collection two lines down; this is the same trust extended to the
+      // recreate half of the same operation, not a new grant. update stays
+      // owner-only — nothing needs an admin editing a parent's profile in
+      // place.
+      allow create: if (isOwnDoc(profileId) && request.resource.data.email == myEmail())
+        || isAdministrator();
+      allow update: if isOwnDoc(profileId)
         && request.resource.data.email == myEmail();
 
       // No delete path exists in the app. A profile is a fact about the past.
@@ -1050,7 +1063,15 @@ service cloud.firestore {
       // admission — so read matches the /admissions block above exactly.
       allow read: if isProvisionedActiveUser();
 
-      allow create: if isPublicEnquiry();
+      // isPublicEnquiry() alone was the whole rule until a restore needed a
+      // second path in: it shape-locks a create to a fresh, untouched
+      // enquiry (status 'new', handledBy/handledOn/note null), which is
+      // right for the public submitting one and wrong for restoring an
+      // enquiry Reception had already triaged. isAdministrator() is not a new
+      // grant — delete on this exact collection is already
+      // Administrator-only four lines down; this lets the same role recreate
+      // what it could already destroy, which a restore needs to do.
+      allow create: if isPublicEnquiry() || isAdministrator();
 
       // Triage — marking one contacted, converted or closed, and recording
       // who dealt with it. Same gate as writing to /admissions, since this
