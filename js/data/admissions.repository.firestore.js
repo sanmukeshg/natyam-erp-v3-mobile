@@ -28,14 +28,14 @@
  */
 
 import {
-    collection, doc, addDoc, setDoc, getDoc, getDocs, updateDoc, deleteDoc,
-    query, where, limit as fsLimit, writeBatch
+    collection, doc, addDoc, setDoc, updateDoc, deleteDoc, query, where, limit as fsLimit, writeBatch
 } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js';
 import { firestore } from '../core/firebase.js';
 import { session } from '../core/session.js';
 import { recordAuditEntry } from './auditLog.repository.firestore.js';
 import { nowISO, localDate } from '../utils/date.js';
 import { ADMISSION_STATUS } from '../config/app.config.js';
+import { getDoc, getDocs } from './firestoreRead.js';
 
 const COLLECTION_NAME = 'admissions';
 const admissionsCollection = collection(firestore, COLLECTION_NAME);

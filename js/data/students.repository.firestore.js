@@ -38,7 +38,7 @@
  */
 
 import {
-    collection, doc, addDoc, setDoc, getDoc, getDocs, updateDoc, deleteDoc,
+    collection, doc, addDoc, setDoc, updateDoc, deleteDoc,
     query, where, limit as fsLimit, startAfter, writeBatch
 } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js';
 import { firestore } from '../core/firebase.js';
@@ -47,6 +47,7 @@ import { recordAuditEntry } from './auditLog.repository.firestore.js';
 import { nowISO, localDate } from '../utils/date.js';
 import { LEVELS, STUDENT_STATUS } from '../config/app.config.js';
 import { nextCode } from './sequenceGenerator.firestore.js';
+import { getDoc, getDocs } from './firestoreRead.js';
 
 const COLLECTION_NAME = 'students';
 const studentsCollection = collection(firestore, COLLECTION_NAME);

@@ -43,9 +43,10 @@
  */
 
 import {
-    collection, doc, getDoc, getDocs
+    collection, doc
 } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js';
 import { firestore } from '../core/firebase.js';
+import { getDoc, getDocs } from './firestoreRead.js';
 
 const COLLECTION_NAME = 'siteContent';
 const siteContentCollection = collection(firestore, COLLECTION_NAME);

@@ -26,10 +26,11 @@
  */
 
 import {
-    doc, getDoc, setDoc
+    doc, setDoc
 } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js';
 import { firestore } from '../core/firebase.js';
 import { nowISO } from '../utils/date.js';
+import { getDoc } from './firestoreRead.js';
 
 const COLLECTION_NAME = 'parentProfiles';
 

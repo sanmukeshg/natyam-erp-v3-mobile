@@ -13,13 +13,13 @@
  */
 
 import {
-    collection, doc, getDoc, getDocs, addDoc, updateDoc, deleteDoc,
-    query, where, writeBatch
+    collection, doc, addDoc, updateDoc, deleteDoc, query, where, writeBatch
 } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js';
 import { firestore } from '../core/firebase.js';
 import { session } from '../core/session.js';
 import { recordAuditEntry } from './auditLog.repository.firestore.js';
 import { nowISO } from '../utils/date.js';
+import { getDoc, getDocs } from './firestoreRead.js';
 
 const COLLECTION_NAME = 'holidays';
 const holidaysCollection = collection(firestore, COLLECTION_NAME);

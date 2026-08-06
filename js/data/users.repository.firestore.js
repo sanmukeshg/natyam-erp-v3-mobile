@@ -19,12 +19,13 @@
  */
 
 import {
-    collection, doc, getDoc, getDocs, setDoc, updateDoc, query, where, runTransaction
+    collection, doc, setDoc, updateDoc, query, where, runTransaction
 } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js';
 import { firestore } from '../core/firebase.js';
 import { session } from '../core/session.js';
 import { nowISO } from '../utils/date.js';
 import { nextCode } from './sequenceGenerator.firestore.js';
+import { getDoc, getDocs } from './firestoreRead.js';
 
 const COLLECTION_NAME = 'users';
 const usersCollection = collection(firestore, COLLECTION_NAME);

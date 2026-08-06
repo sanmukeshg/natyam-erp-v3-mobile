@@ -29,13 +29,13 @@
  */
 
 import {
-    collection, doc, getDoc, getDocs, addDoc,
-    query, where, orderBy, limit as fsLimit, writeBatch
+    collection, doc, addDoc, query, where, orderBy, limit as fsLimit, writeBatch
 } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js';
 import { firestore } from '../core/firebase.js';
 import { session } from '../core/session.js';
 import { uid } from '../utils/id.js';
 import { nowISO } from '../utils/date.js';
+import { getDoc, getDocs } from './firestoreRead.js';
 
 const COLLECTION_NAME = 'auditLog';
 const auditLogCollection = collection(firestore, COLLECTION_NAME);

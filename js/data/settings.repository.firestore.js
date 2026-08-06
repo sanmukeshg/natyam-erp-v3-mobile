@@ -17,10 +17,11 @@
  */
 
 import {
-    collection, doc, getDoc, getDocs, setDoc, deleteDoc, runTransaction
+    collection, doc, setDoc, deleteDoc, runTransaction
 } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js';
 import { firestore } from '../core/firebase.js';
 import { nowISO } from '../utils/date.js';
+import { getDoc, getDocs } from './firestoreRead.js';
 
 const COLLECTION_NAME = 'settings';
 const settingsCollection = collection(firestore, COLLECTION_NAME);
