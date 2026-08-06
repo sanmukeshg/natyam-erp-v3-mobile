@@ -531,10 +531,20 @@ export default class MobileStudentsPage extends Page {
         if (key === 'issue-certificate') return this.issueCertificate();
     }
 
-    /** Refreshes the open profile and the list behind it after any write. */
+    /**
+     * Refreshes the open profile and the list behind it after any write.
+     *
+     * paintSheet(), not paintProfile() — there has never been a paintProfile()
+     * on this page. Every one of the five operations that routes through here
+     * (edit, move batch, promote, change status, issue certificate) wrote
+     * successfully, showed its success toast, then threw "this.paintProfile is
+     * not a function" on the very next line — so the change was saved while the
+     * screen said it had failed, and `await this.load()` below never ran,
+     * leaving the list stale behind the error too.
+     */
     async refreshAfterOperation(studentId) {
         this.profile = await profile(studentId);
-        this.paintProfile();
+        this.paintSheet();
         await this.load();
     }
 

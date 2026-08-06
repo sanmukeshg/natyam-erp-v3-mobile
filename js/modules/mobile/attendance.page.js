@@ -78,7 +78,11 @@ export default class MobileAttendancePage extends Page {
         } catch (err) {
             if (this.disposed) return;
             console.error('Attendance failed to load', err);
-            showLoadError(this.container, { what: 'The day\'s classes', error: err, onRetry: () => this.load() });
+            // loadBoard, not load — this page has no load(). The retry was
+            // wired by a scripted conversion that assumed every page named its
+            // loader the same way, so tapping "Try again" here threw instead of
+            // retrying, on the one screen where something had already failed.
+            showLoadError(this.container, { what: 'The day\'s classes', error: err, onRetry: () => this.loadBoard() });
         }
     }
 
