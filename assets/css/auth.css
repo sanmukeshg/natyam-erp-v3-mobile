@@ -385,7 +385,38 @@
     .auth-rightstage { flex: none; }
 
     .auth-hero-desktop { display: none; }
-    .auth-hero-mobile { display: block; }
+
+    /*
+     * The hero grows to cover the viewport instead of ending early.
+     *
+     * intro-mobile.jpg is aspect-locked at 780/1599 (0.4878) so .auth-tap-wrap's
+     * percentage coordinates stay pixel-accurate against the button baked into
+     * the image. But width:100% then derives the height, so on any screen
+     * NARROWER than 0.4878 the image stops short and leaves bare #140907 below
+     * it. An iPhone 14 Pro is 393x852 — 0.4613 — which is a 46px band of flat
+     * brown under the floor pattern, and the fix for the wrong edge: #140907 is
+     * sampled from the image's bottom, but the bottom is the detailed floor, so
+     * a flat strip there never blended. Android in a browser escaped it only
+     * because the URL and nav bars shrink the viewport into a WIDER ratio.
+     *
+     * Sizing by width keeps the aspect lock, and so keeps the tap coordinates
+     * exact — this grows the whole hero box, image and percentage basis
+     * together, rather than stretching one against the other. The overflow goes
+     * sideways, where the medallion is centred and a few pixels off each edge
+     * are invisible; the alternative was cropping the floor or gapping it.
+     *
+     * lvh, not dvh: dvh changes as Safari's toolbar collapses, which would
+     * resize the hero mid-scroll. lvh is the tallest the viewport ever gets, so
+     * the cover holds in every toolbar state and never reflows. Plain vh first
+     * for older engines — on iOS it has always meant the large viewport anyway.
+     */
+    .auth-hero-mobile {
+        display: block;
+        width: max(100%, calc(100vh * 780 / 1599));
+        width: max(100%, calc(100lvh * 780 / 1599));
+        left: 50%;
+        transform: translateX(-50%);
+    }
     .auth-screen[data-state="signin"] .auth-hero-mobile { display: none; }
 
     .auth-screen[data-state="signin"] {
