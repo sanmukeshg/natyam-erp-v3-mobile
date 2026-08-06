@@ -166,7 +166,28 @@
     overflow: hidden;
     background:
         linear-gradient(var(--v3-scrim), var(--v3-scrim)),
-        var(--v3-backdrop) center / cover no-repeat fixed;
+        /*
+         * No `fixed`, and this one line is the whole iOS band.
+         *
+         * The device measured 390x797 inside a 390x844 screen. The 47pt
+         * difference is the status bar, so the web view DOES reach the physical
+         * bottom and nothing is missing outside the page — the band is inside
+         * it, in the last 36px. And 36 is exactly what `cover` leaves unpainted
+         * when iOS resolves a fixed-attachment positioning area 36px short of
+         * the element: the artwork gets drawn 428x761 into a box 797 tall.
+         *
+         * Without it the same artwork is drawn 449x797 and fills. It also
+         * renders 4.7% larger, which is what looked like the background being
+         * "raised" — that is its correct size; the old one was 96% of it.
+         *
+         * Costs nothing else: this shell has overflow:hidden and never scrolls
+         * (.m-content is the scroller), so a scroll-attached background here is
+         * already stationary. .m-subhead keeps its own `fixed` — it moves with
+         * the scroller and genuinely needs viewport anchoring, and it sits over
+         * the smooth wall at the top where a 4.7% scale difference is invisible,
+         * rather than over the carved floor where it would not be.
+         */
+        var(--v3-backdrop) center / cover no-repeat;
     font-family: var(--font-ui);
 }
 
