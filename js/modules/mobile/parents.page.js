@@ -33,6 +33,7 @@ import { CAPABILITIES } from '../../config/app.config.js';
 import { formModal } from '../../ui/form.js';
 import { toast } from '../../ui/toast.js';
 import { filterBar, renderFilterPanel, bindFilterToggle } from '../../ui/filterBar.js';
+import { showLoadError } from '../../ui/loadState.js';
 
 /** Filter pills, in the order a phone user reaches for them. */
 const FILTERS = [
@@ -76,9 +77,7 @@ export default class MobileParentsPage extends Page {
         } catch (err) {
             if (this.disposed) return;
             console.error('Households could not be assembled', err);
-            render(this.container, html`
-                <div class="m-error">Households could not be assembled — ${err.message}</div>
-            `);
+            showLoadError(this.container, { what: 'Households', error: err, onRetry: () => this.load() });
         }
     }
 

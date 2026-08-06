@@ -26,6 +26,7 @@ import { EVENTS } from '../../core/bus.js';
 import { formatMoney, formatMoneyShort, formatNumber } from '../../utils/money.js';
 import { formatDateLong } from '../../utils/date.js';
 import { analyticsOverview } from '../../services/analytics.service.js';
+import { showLoadError } from '../../ui/loadState.js';
 
 const RANGES = [
     { months: 6, label: '6m' },
@@ -80,7 +81,7 @@ export default class MobileAnalyticsPage extends Page {
         } catch (err) {
             if (this.disposed) return;
             console.error('Analytics failed to load', err);
-            render(this.container, html`<div class="m-error">Analytics could not be assembled — ${err.message}</div>`);
+            showLoadError(this.container, { what: 'Analytics', error: err, onRetry: () => this.load() });
         }
     }
 

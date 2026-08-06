@@ -34,6 +34,7 @@ import { EVENTS } from '../../core/bus.js';
 import { localDate, addDays, formatDate, formatDateLong } from '../../utils/date.js';
 import { ATTENDANCE_STATUS } from '../../config/app.config.js';
 import { dayBoard, openRegister, postRegister, markingWindow } from '../../services/attendance.service.js';
+import { showLoadError } from '../../ui/loadState.js';
 
 export default class MobileAttendancePage extends Page {
     constructor(context) {
@@ -77,9 +78,7 @@ export default class MobileAttendancePage extends Page {
         } catch (err) {
             if (this.disposed) return;
             console.error('Attendance failed to load', err);
-            render(this.container, html`
-                <div class="m-error">The day's classes could not be loaded — ${err.message}</div>
-            `);
+            showLoadError(this.container, { what: 'The day\'s classes', error: err, onRetry: () => this.load() });
         }
     }
 

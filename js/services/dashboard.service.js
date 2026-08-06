@@ -32,31 +32,54 @@ import { recentActivity } from './audit.service.js';
    ========================================================================== */
 
 /**
+ * Every panel this service can build, as a factory rather than a promise.
+ *
+ * The distinction is the whole point: the previous version built all ten
+ * promises to construct the object, which called all ten panels whether or
+ * not the caller wanted them. A caller could ignore a panel but never avoid
+ * paying for it.
+ */
+const PANELS = {
+    headline:   (branchId) => headline(branchId),
+    today:      (branchId) => today(branchId),
+    money:      (branchId) => money(branchId),
+    admissions: (branchId) => admissionsPanel(branchId),
+    attendance: (branchId) => attendancePanel(branchId),
+    roll:       (branchId) => rollPanel(branchId),
+    programs:   (branchId) => programsPanel(branchId),
+    attention:  (branchId) => needsAttention(branchId),
+    activity:   () => activityPanel(),
+    branches:   (branchId) => (branchId ? Promise.resolve(null) : branchPanel())
+};
+
+export const ALL_PANELS = Object.keys(PANELS);
+
+/**
  * Everything the dashboard shows, in one call.
  *
  * Panels are resolved in parallel and each is failure-isolated: a single
  * malformed programme date should degrade one card, not blank the entire
  * screen. A panel that fails returns `{ error }` and the page renders an
  * inline retry in its place.
+ *
+ * `panels` narrows the work to what the caller will actually render
+ * (ENH-310). It defaults to all of them, so this stays a drop-in for any
+ * caller that wants the whole picture — the desktop dashboard still does.
+ * The mobile owner dashboard does not: since ENH-301 it renders two of the
+ * ten, and fetching the other eight cost 51% of its load time to build data
+ * that was thrown away.
+ *
+ * @param {object}   [options]
+ * @param {string}   [options.branchId]
+ * @param {string[]} [options.panels]  Keys from ALL_PANELS.
  */
-export async function overview({ branchId = null } = {}) {
-    const panels = {
-        headline: headline(branchId),
-        today: today(branchId),
-        money: money(branchId),
-        admissions: admissionsPanel(branchId),
-        attendance: attendancePanel(branchId),
-        roll: rollPanel(branchId),
-        programs: programsPanel(branchId),
-        attention: needsAttention(branchId),
-        activity: activityPanel(),
-        branches: branchId ? Promise.resolve(null) : branchPanel()
-    };
+export async function overview({ branchId = null, panels = ALL_PANELS } = {}) {
+    const wanted = panels.filter((key) => PANELS[key]);
 
     const entries = await Promise.all(
-        Object.entries(panels).map(async ([key, promise]) => {
+        wanted.map(async (key) => {
             try {
-                return [key, await promise];
+                return [key, await PANELS[key](branchId)];
             } catch (err) {
                 console.error(`Dashboard panel "${key}" failed`, err);
                 return [key, { error: err.message }];

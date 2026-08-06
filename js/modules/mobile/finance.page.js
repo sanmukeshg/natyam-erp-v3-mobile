@@ -40,6 +40,7 @@ import {
 } from '../../services/finance.service.js';
 import { listBranches } from '../../services/settings.service.js';
 import { formModal } from '../../ui/form.js';
+import { showLoadError } from '../../ui/loadState.js';
 
 export default class MobileFinancePage extends Page {
     constructor(context) {
@@ -86,7 +87,7 @@ export default class MobileFinancePage extends Page {
         } catch (err) {
             if (this.disposed) return;
             console.error('Finance failed to load', err);
-            render(this.container, html`<div class="m-error">The books could not be loaded — ${err.message}</div>`);
+            showLoadError(this.container, { what: 'The books', error: err, onRetry: () => this.load() });
         }
     }
 

@@ -42,6 +42,7 @@ import {
 import { listBranches, listFeePlans } from '../../services/settings.service.js';
 import { formModal } from '../../ui/form.js';
 import { filterBar, renderFilterPanel, bindFilterToggle } from '../../ui/filterBar.js';
+import { showLoadError } from '../../ui/loadState.js';
 
 const FILTERS = [
     { key: null, label: 'All' },
@@ -107,9 +108,7 @@ export default class MobileAdmissionsPage extends Page {
         } catch (err) {
             if (this.disposed) return;
             console.error('Admissions failed to load', err);
-            render(this.container, html`
-                <div class="m-error">Applications could not be loaded — ${err.message}</div>
-            `);
+            showLoadError(this.container, { what: 'Applications', error: err, onRetry: () => this.load() });
         }
     }
 

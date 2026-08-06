@@ -41,6 +41,7 @@ import {
 } from '../../services/programs.service.js';
 import { formModal, confirmModal } from '../../ui/form.js';
 import { filterBar, renderFilterPanel, bindFilterToggle } from '../../ui/filterBar.js';
+import { showLoadError } from '../../ui/loadState.js';
 
 const FILTERS = [
     { key: 'upcoming', label: 'Upcoming' },
@@ -87,7 +88,7 @@ export default class MobileProgramsPage extends Page {
         } catch (err) {
             if (this.disposed) return;
             console.error('Programmes failed to load', err);
-            render(this.container, html`<div class="m-error">Programmes could not be loaded — ${err.message}</div>`);
+            showLoadError(this.container, { what: 'Programmes', error: err, onRetry: () => this.load() });
         }
     }
 

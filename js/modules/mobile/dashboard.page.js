@@ -30,6 +30,7 @@ import { icon } from '../../ui/icons.js';
 import { session } from '../../core/session.js';
 import { EVENTS } from '../../core/bus.js';
 import { formatMoneyShort, formatNumber } from '../../utils/money.js';
+import { showLoadError } from '../../ui/loadState.js';
 import { overview, forTeacher } from '../../services/dashboard.service.js';
 
 const STATE_LABEL = {
@@ -103,18 +104,27 @@ export default class MobileDashboardPage extends Page {
                 // forTeacher() is passed the signed-in actor's id, exactly as
                 // the reference app does — behaviour preserved, not revised.
                 ? this.teacherView(await forTeacher(session.actorId()))
-                : this.ownerView(await overview({ branchId: session.branch() }));
+                // Only the two panels ownerView() renders. The workspace
+                // redesign (ENH-301) stopped showing the other eight; asking
+                // for them anyway spent half this screen's load time building
+                // data that went straight in the bin.
+                : this.ownerView(await overview({
+                    branchId: session.branch(),
+                    panels: ['headline', 'attention']
+                }));
 
             if (this.disposed) return;
             render(this.container, html`<div data-role="body">${view}</div>`);
         } catch (err) {
             if (this.disposed) return;
             console.error('Dashboard failed to load', err);
-            render(this.container, html`
-                <div data-role="body">
-                    <div class="m-error">The dashboard could not be loaded — ${err.message}</div>
-                </div>
-            `);
+            // The data-role wrapper is rebuilt first: load() locates its own
+            // target through it, so a retry from inside the error view needs
+            // it present or the second attempt paints over the whole page.
+            render(this.container, html`<div data-role="body"></div>`);
+            showLoadError(this.container.querySelector('[data-role="body"]'), {
+                what: 'The dashboard', error: err, onRetry: () => this.load()
+            });
         }
     }
 

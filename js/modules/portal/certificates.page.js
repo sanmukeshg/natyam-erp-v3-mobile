@@ -15,6 +15,7 @@ import { EVENTS } from '../../core/bus.js';
 import { formatDate } from '../../utils/date.js';
 import { certificates$ } from '../../data/repositories.js';
 import { guardianSession } from '../../services/portal/guardianAuth.service.js';
+import { showLoadError } from '../../ui/loadState.js';
 
 export default class PortalCertificatesPage extends Page {
     constructor(context) {
@@ -37,7 +38,17 @@ export default class PortalCertificatesPage extends Page {
         const students = guardianSession.selectedChildren();
         if (!students.length) { render(this.container, this.page([])); return; }
 
-        const all = await certificates$.forGuardian(guardianSession.phone, guardianSession.email);
+        render(this.container, html`<div class="m-skeleton">Loading certificates…</div>`);
+
+        let all;
+        try {
+            all = await certificates$.forGuardian(guardianSession.phone, guardianSession.email);
+        } catch (err) {
+            if (this.disposed) return;
+            console.error('Portal certificates failed to load', err);
+            showLoadError(this.container, { what: 'Certificates', error: err, onRetry: () => this.load() });
+            return;
+        }
         if (this.disposed) return;
 
         render(this.container, this.page(students.map((student) => ({

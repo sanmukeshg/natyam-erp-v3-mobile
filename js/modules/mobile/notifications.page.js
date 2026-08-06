@@ -33,6 +33,7 @@ import { session } from '../../core/session.js';
 import { EVENTS } from '../../core/bus.js';
 import { relativeTime } from '../../utils/date.js';
 import { centre, markRead, markAllRead, dismiss, refreshAlerts } from '../../services/notifications.service.js';
+import { showLoadError } from '../../ui/loadState.js';
 
 const SEVERITY_ORDER = { error: 0, warning: 1, success: 2, info: 3 };
 
@@ -72,9 +73,7 @@ export default class MobileNotificationsPage extends Page {
         } catch (err) {
             if (this.disposed) return;
             console.error('Notifications failed to load', err);
-            render(this.container, html`
-                <div class="m-error">Notifications could not be loaded — ${err.message}</div>
-            `);
+            showLoadError(this.container, { what: 'Notifications', error: err, onRetry: () => this.load() });
         }
     }
 

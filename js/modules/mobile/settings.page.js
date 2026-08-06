@@ -39,6 +39,7 @@ import {
 import { exposedFeeFrequencies } from '../../config/app.config.js';
 import { formModal } from '../../ui/form.js';
 import { toast } from '../../ui/toast.js';
+import { showLoadError } from '../../ui/loadState.js';
 
 const TABS = [
     { key: 'preferences', label: 'Display', cap: null },
@@ -107,7 +108,7 @@ export default class MobileSettingsPage extends Page {
         } catch (err) {
             if (this.disposed) return;
             console.error(`Settings tab "${this.tab}" failed`, err);
-            render(panel, html`<div class="m-error">Could not load this section — ${err.message}</div>`);
+            showLoadError(panel, { what: 'This section', error: err, onRetry: () => this.loadTab() });
         }
     }
 

@@ -37,6 +37,7 @@ import { curriculum, levelsOf, CAPABILITIES } from '../../config/app.config.js';
 import { formModal, confirmModal } from '../../ui/form.js';
 import { filterBar, renderFilterPanel, bindFilterToggle } from '../../ui/filterBar.js';
 import { localDate } from '../../utils/date.js';
+import { showLoadError } from '../../ui/loadState.js';
 
 const FILTERS = [
     { key: null, label: 'All' },
@@ -74,7 +75,7 @@ export default class MobileBatchesPage extends Page {
         } catch (err) {
             if (this.disposed) return;
             console.error('Batches failed to load', err);
-            render(this.container, html`<div class="m-error">Batches could not be loaded — ${err.message}</div>`);
+            showLoadError(this.container, { what: 'Batches', error: err, onRetry: () => this.load() });
         }
     }
 

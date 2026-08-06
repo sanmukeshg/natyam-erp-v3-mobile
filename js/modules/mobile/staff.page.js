@@ -29,6 +29,7 @@ import { EVENTS } from '../../core/bus.js';
 import { formatMoney, formatMoneyShort, formatNumber } from '../../utils/money.js';
 import { formatDateLong } from '../../utils/date.js';
 import { listStaff, staffSummary, teacherDashboard } from '../../services/staff.service.js';
+import { showLoadError } from '../../ui/loadState.js';
 
 const FILTERS = [
     { key: null, label: 'All' },
@@ -70,7 +71,7 @@ export default class MobileStaffPage extends Page {
         } catch (err) {
             if (this.disposed) return;
             console.error('Staff failed to load', err);
-            render(this.container, html`<div class="m-error">Staff could not be loaded — ${err.message}</div>`);
+            showLoadError(this.container, { what: 'Staff', error: err, onRetry: () => this.load() });
         }
     }
 

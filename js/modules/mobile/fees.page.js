@@ -39,6 +39,7 @@ import { listStudents } from '../../services/students.service.js';
 import { collectionSummary, studentFeeSummary, recordPayment, waiveInvoice } from '../../services/fees.service.js';
 import { formModal } from '../../ui/form.js';
 import { filterBar, renderFilterPanel, bindFilterToggle } from '../../ui/filterBar.js';
+import { showLoadError } from '../../ui/loadState.js';
 
 const FILTERS = [
     { key: null, label: 'Everyone' },
@@ -127,7 +128,7 @@ export default class MobileFeesPage extends Page {
         } catch (err) {
             if (this.disposed) return;
             console.error('Fees failed to load', err);
-            render(this.container, html`<div class="m-error">Fees could not be loaded — ${err.message}</div>`);
+            showLoadError(this.container, { what: 'Fees', error: err, onRetry: () => this.load() });
         }
     }
 

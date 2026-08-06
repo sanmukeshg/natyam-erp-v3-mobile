@@ -14,6 +14,7 @@ import { levelLabel } from '../../config/app.config.js';
 import { guardianSession } from '../../services/portal/guardianAuth.service.js';
 import { studentFeeSummary } from '../../services/fees.service.js';
 import { EVENTS } from '../../core/bus.js';
+import { showLoadError } from '../../ui/loadState.js';
 
 const DAY_LABELS = { Sun: 'Sun', Mon: 'Mon', Tue: 'Tue', Wed: 'Wed', Thu: 'Thu', Fri: 'Fri', Sat: 'Sat' };
 
@@ -44,9 +45,25 @@ export default class PortalOverviewPage extends Page {
         // all four.
         const students = guardianSession.selectedChildren();
 
-        const fees = await Promise.all(
-            students.map((s) => studentFeeSummary(s.id).catch(() => null))
-        );
+        render(container, html`<div class="m-skeleton">Loading your children…</div>`);
+
+        let fees;
+        try {
+            fees = await Promise.all(
+                students.map((s) => studentFeeSummary(s.id).catch(() => null))
+            );
+        } catch (err) {
+            if (this.disposed) return;
+            console.error('Portal overview failed to load', err);
+            showLoadError(container, { what: 'Your children', error: err, onRetry: () => this.render(container) });
+            return;
+        }
+
+        // This page had no disposed guard at all — the only portal page that
+        // awaited without one. A fee summary resolving after the parent had
+        // already tapped through to Fees rendered these cards over that page,
+        // which reads as the app losing its place.
+        if (this.disposed) return;
 
         render(container, html`
             <div class="m-stack">

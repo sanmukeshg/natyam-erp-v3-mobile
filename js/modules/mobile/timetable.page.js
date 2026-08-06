@@ -33,6 +33,7 @@ import { EVENTS } from '../../core/bus.js';
 import { startOfWeek, addDays, localDate, formatDate } from '../../utils/date.js';
 import { timetable } from '../../services/batches.service.js';
 import { markingWindow } from '../../services/attendance.service.js';
+import { showLoadError } from '../../ui/loadState.js';
 
 const WEEK_ORDER = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -75,9 +76,7 @@ export default class MobileTimetablePage extends Page {
         } catch (err) {
             if (this.disposed) return;
             console.error('Timetable failed to load', err);
-            render(this.container, html`
-                <div class="m-error">The week could not be loaded — ${err.message}</div>
-            `);
+            showLoadError(this.container, { what: 'The week', error: err, onRetry: () => this.load() });
         }
     }
 

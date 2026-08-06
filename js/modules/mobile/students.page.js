@@ -39,6 +39,7 @@ import { curriculum, CAPABILITIES, STUDENT_STATUS } from '../../config/app.confi
 import { formModal, confirmModal } from '../../ui/form.js';
 import { router } from '../../core/router.js';
 import { localDate } from '../../utils/date.js';
+import { showLoadError } from '../../ui/loadState.js';
 
 const QUICK_FILTERS = [
     { key: null, label: 'All' },
@@ -114,9 +115,7 @@ export default class MobileStudentsPage extends Page {
         } catch (err) {
             if (this.disposed) return;
             console.error('Students failed to load', err);
-            render(this.container.querySelector('[data-role="list"]'), html`
-                <div class="m-error">The roll could not be loaded — ${err.message}</div>
-            `);
+            showLoadError(this.container.querySelector('[data-role="list"]'), { what: 'The roll', error: err, onRetry: () => this.load() });
         }
     }
 

@@ -41,6 +41,7 @@ import { formModal, confirmModal } from '../../ui/form.js';
 import { toast } from '../../ui/toast.js';
 import { filterBar, renderFilterPanel, bindFilterToggle } from '../../ui/filterBar.js';
 import { localDate } from '../../utils/date.js';
+import { showLoadError } from '../../ui/loadState.js';
 
 const FILTERS = [
     { key: null, label: 'All' },
@@ -82,7 +83,7 @@ export default class MobileCertificatesPage extends Page {
         } catch (err) {
             if (this.disposed) return;
             console.error('Certificates failed to load', err);
-            render(this.container, html`<div class="m-error">Certificates could not be loaded — ${err.message}</div>`);
+            showLoadError(this.container, { what: 'Certificates', error: err, onRetry: () => this.load() });
         }
     }
 

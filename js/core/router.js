@@ -125,6 +125,18 @@ class Router {
     }
 
     async resolve() {
+        // Claimed BEFORE the first await, not after it.
+        //
+        // This used to sit below the revalidate() call, which meant two quick
+        // taps both got past that await before either had claimed an id: both
+        // then read the same (latest) hash and both built and fetched the same
+        // page, doubling the reads for that screen. Claiming the id first
+        // means the older navigation is already superseded by the time its
+        // revalidate returns, and it stops there.
+        this.navigationId += 1;
+        const navigation = this.navigationId;
+        const superseded = () => navigation !== this.navigationId;
+
         // A session can lapse while the app sits open in a tab — idle
         // timeout, or local storage cleared from another tab. The idle
         // watch in app.js catches that reactively every 60s; this catches
@@ -146,6 +158,7 @@ class Router {
         // instance (see defaultRevalidate() above) — a guardian session
         // supplies its own check instead of this staff-specific one.
         const stillValid = await this.revalidate().catch(() => false);
+        if (superseded()) return;
         if (!stillValid) {
             await expireSession();
             location.reload();
@@ -157,11 +170,6 @@ class Router {
         const raw = window.location.hash.slice(1) || '/';
         const [path, queryString = ''] = raw.split('?');
         const query = Object.fromEntries(new URLSearchParams(queryString));
-
-        // A second navigation while the first is still awaiting its import must
-        // win. Without this, a fast double-click renders the older page last.
-        this.navigationId += 1;
-        const navigation = this.navigationId;
 
         if (this.current) this.scrollPositions.set(this.current, window.scrollY);
 
@@ -190,11 +198,11 @@ class Router {
         let PageClass;
         try {
             const loaded = await match.route.load();
-            if (navigation !== this.navigationId) return; // superseded
+            if (superseded()) return;
             PageClass = loaded.default || loaded.Page || loaded;
         } catch (err) {
             console.error('Failed to load module for', path, err);
-            if (navigation !== this.navigationId) return;
+            if (superseded()) return;
             this.renderLoadFailure(path, err);
             bus.emit(EVENTS.ROUTE_FAILED, { path, error: err });
             return;
@@ -213,7 +221,7 @@ class Router {
             this.current = path;
 
             await page.render(this.viewport, context);
-            if (navigation !== this.navigationId) return;
+            if (superseded()) return;
 
             document.title = `${match.route.title || page.title || 'Natyam'} — Natyam ERP`;
 
@@ -235,7 +243,7 @@ class Router {
             bus.emit(EVENTS.ROUTE_DONE, { path, query, params: match.params });
         } catch (err) {
             console.error('Route render failed:', path, err);
-            if (navigation !== this.navigationId) return;
+            if (superseded()) return;
             this.renderError(err);
             bus.emit(EVENTS.ROUTE_FAILED, { path, error: err });
         }

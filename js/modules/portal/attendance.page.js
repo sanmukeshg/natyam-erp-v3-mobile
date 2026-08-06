@@ -17,6 +17,7 @@ import { EVENTS } from '../../core/bus.js';
 import { localDate, startOfWeek, monthKey, formatDate } from '../../utils/date.js';
 import { attendance$, AttendanceMath } from '../../data/repositories.js';
 import { guardianSession } from '../../services/portal/guardianAuth.service.js';
+import { showLoadError } from '../../ui/loadState.js';
 
 export default class PortalAttendancePage extends Page {
     constructor(context) {
@@ -47,7 +48,20 @@ export default class PortalAttendancePage extends Page {
         const weekStart = startOfWeek(today);
         const monthStart = `${monthKey(today)}-01`;
 
-        const all = await attendance$.forGuardian(guardianSession.phone, guardianSession.email);
+        // Something has to be on screen before the await. Without it a parent
+        // on a slow connection stares at the previous page with no sign the
+        // app is working — the read is what changes, not the screen.
+        render(this.container, html`<div class="m-skeleton">Loading attendance…</div>`);
+
+        let all;
+        try {
+            all = await attendance$.forGuardian(guardianSession.phone, guardianSession.email);
+        } catch (err) {
+            if (this.disposed) return;
+            console.error('Portal attendance failed to load', err);
+            showLoadError(this.container, { what: 'Attendance', error: err, onRetry: () => this.load() });
+            return;
+        }
         if (this.disposed) return;
 
         const blocks = students.map((student) => {
