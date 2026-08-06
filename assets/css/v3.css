@@ -1479,6 +1479,41 @@ html, body {
     min-height: 100%;
 }
 
+/*
+ * The document itself must not scroll while the shell is mounted.
+ *
+ * `min-height: 100%` above lets the document grow taller than the viewport,
+ * and iOS then rubber-bands the whole page: drag anywhere and the shell lifts
+ * to reveal the body behind it, then springs back. That is the "raising from
+ * below, settles when you let go" — nothing is wrong with the layout, the page
+ * is simply bouncing, and what shows underneath is body's own background.
+ *
+ * .m-content is already the only thing meant to scroll (the shell is a flex
+ * column with overflow:hidden), so pinning the document costs nothing and
+ * removes the outer scroller that was doing the bouncing. overscroll-behavior
+ * alone does not stop it on iOS — Safari still bounces the document even with
+ * `none`, which is why body already carried that and still moved.
+ *
+ * Scoped with :has() so it applies ONLY when the shell is on screen. The
+ * landing, sign-in and public pages are ordinary scrolling documents and must
+ * stay that way; a blanket overflow:hidden would trap their content. Browsers
+ * without :has() keep the previous behaviour rather than breaking.
+ *
+ * #boot is included for the same reason and it is not redundant: the boot
+ * screen is static markup in index.html that paints before app.js has built
+ * anything, so during those first seconds .m-shell does not exist and the
+ * document is unpinned and free to bounce. That is why the band outlived the
+ * reinstall on the splash while the app behind it was already correct.
+ */
+html:has(.m-shell),
+html:has(.m-shell) body,
+html:has(#boot),
+html:has(#boot) body {
+    height: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
+}
+
 body {
     overscroll-behavior: none;
 }
