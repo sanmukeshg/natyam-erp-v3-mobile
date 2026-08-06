@@ -267,12 +267,14 @@ export default class MobileAdmissionsPage extends Page {
                             Submitted by the family through the Natyam app.${
                                 app.applicationNo ? '' : ' A NAT/APP number is issued when review begins.'
                             }${
-                                // Recognition only — there is no branch picker on mobile by
-                                // decision. Naming the preference here is what lets whoever
-                                // opens this on a phone know the application is unassigned
-                                // and why, without offering an edit that belongs at a desk.
+                                // Names the preference so whoever opens this knows the
+                                // application is still unassigned and what the family
+                                // asked for. It used to send them to the Desktop ERP to
+                                // fix it; Begin review now asks for the branch here
+                                // (UAT4-BUG-001), so it says where that happens instead
+                                // of pointing at another machine.
                                 app.preferredBranch && !app.branchId
-                                    ? ` The family asked for ${app.preferredBranch}; assign a branch in the Desktop ERP.`
+                                    ? ` The family asked for ${app.preferredBranch} — confirm the branch when you begin review.`
                                     : ''
                             }
                         </div>
@@ -348,15 +350,79 @@ export default class MobileAdmissionsPage extends Page {
 
     /* -------------------------------------------------------------- ACTIONS */
 
+    /**
+     * The branch a self-submitted application still needs — UAT4-BUG-001.
+     *
+     * A parent applying through the public site never supplies a branch id:
+     * /branches is staff-gated, and the public Branches page is hand-written
+     * Website Content carrying names only, so they name the branch they want as
+     * free text (`preferredBranch`). createSelfSubmitted() therefore skips the
+     * branchId check that update() enforces — which meant Begin review, the very
+     * next step, threw "Choose the branch being applied to." with no way on this
+     * screen to answer it. The detail card said to go and do it in the Desktop
+     * ERP; an owner holding a phone in the studio is exactly who this screen is
+     * for, so it asks instead.
+     *
+     * Returns a branch id, or null if the person backed out — never a partial
+     * write. beginReview() only ever fills a gap, so passing one for an
+     * application that already has a branch cannot overwrite it.
+     */
+    async askForBranch(app) {
+        const branches = await listBranches();
+        if (!branches.length) throw new Error('No branches are set up yet — add one in Settings first.');
+
+        // Pre-select what the family asked for, matched leniently: the name
+        // reached them through Website Content, typed by hand, and the two lists
+        // genuinely disagree today — the CMS carries "Natyam - Kondapur" (hyphen)
+        // where the Branch record is "Natyam – Kondapur" (en dash). Comparing
+        // those literally would offer no default at all, so dashes and spacing
+        // are normalised away before matching. It is only a default; the person
+        // still confirms.
+        const flatten = (s) => String(s || '').toLowerCase().replace(/[‐-―-]/g, '-').replace(/\s+/g, ' ').trim();
+        const asked = flatten(app.preferredBranch);
+        const guess = branches.find((b) => flatten(b.name) === asked);
+
+        const values = await formModal({
+            title: 'Which branch?',
+            description: app.preferredBranch
+                ? `The family asked for ${app.preferredBranch}. Confirm the branch this application belongs to.`
+                : 'This application arrived without a branch. Choose the one it belongs to.',
+            submitLabel: 'Begin review',
+            fields: [
+                { name: 'branchId', label: 'Branch', type: 'select', required: true,
+                  placeholder: branches.length > 1 ? 'Choose a branch' : null,
+                  value: guess?.id || (branches.length === 1 ? branches[0].id : ''),
+                  options: branches.map((b) => ({ value: b.id, label: b.name })) }
+            ],
+            values: { branchId: guess?.id || (branches.length === 1 ? branches[0].id : '') },
+            onSubmit: (v) => v
+        });
+
+        return values?.branchId || null;
+    }
+
     async advance(key) {
         const app = this.detail?.application;
         if (!app || this.busy) return;
         if (key === 'enrol') return this.enrol(app);
 
+        // Asked BEFORE the busy flag, so the sheet stays interactive behind the
+        // dialog and a cancel leaves the screen exactly as it was.
+        let branchId = null;
+        if (key === 'review' && !app.branchId) {
+            try {
+                branchId = await this.askForBranch(app);
+            } catch (err) {
+                toast.error(err.message);
+                return;
+            }
+            if (!branchId) return;          // backed out — nothing written
+        }
+
         this.busy = true;
         this.paintDetail();
         try {
-            if (key === 'review') await beginReview(app.id);
+            if (key === 'review') await beginReview(app.id, { branchId });
             else if (key === 'approve') await approve(app.id);
             else if (key === 'reopen') await reopen(app.id);
             else throw new Error(`"${key}" is not something this screen can do yet.`);

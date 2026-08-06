@@ -286,6 +286,26 @@
  */
 .m-tabbar {
     flex-shrink: 0; display: flex; align-items: stretch;
+    /*
+     * Positioned, with an explicit z-index BELOW --z-modal (600) — UAT4-BUG-003.
+     *
+     * It was position:static/z-index:auto, and by the painting-order rules that
+     * is still correct: a positioned element with a positive z-index (.m-profile,
+     * --z-modal) paints above non-positioned in-flow content. Chrome agrees, which
+     * is why the sheet covered this bar on Android and its Reject / Begin review
+     * row was reachable.
+     *
+     * WebKit does not, once `backdrop-filter` below turns this into a stacking
+     * context while it is still unpositioned — it hoists the bar above the
+     * positioned sheet, so on iPhone the tab bar drew over the sheet's action row
+     * and the two buttons could not be tapped at all.
+     *
+     * Saying the order out loud rather than deriving it from paint rules removes
+     * the ambiguity WebKit gets wrong. --z-sticky (100) is far under --z-modal
+     * and above --z-base, which is what this bar is: app chrome, over the page,
+     * under anything modal.
+     */
+    position: relative; z-index: var(--z-sticky);
     margin: 0 12px calc(var(--v3-safe-bottom) + 10px);
     padding: 4px;
     background: var(--v3-tabbar-bg);
