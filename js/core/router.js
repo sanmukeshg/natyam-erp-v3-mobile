@@ -25,15 +25,36 @@ import { expireSession } from '../services/auth.service.js';
 import { users$ } from '../data/repositories.js';
 
 /**
+ * How long a status check is trusted before it is made again (ENH-310).
+ *
+ * This ran on EVERY navigation — one serial document read in front of every
+ * screen, before the page was even allowed to start loading. Sixty seconds
+ * matches the idle watch in app.js and costs almost nothing in reach: the
+ * check only ever fired on navigation anyway, so someone who opened a screen
+ * and stayed on it was already never re-checked. This narrows the guarantee
+ * from "at every navigation" to "at most once a minute", which is the same
+ * shape of guarantee, one minute coarser.
+ */
+const REVALIDATE_EVERY_MS = 60000;
+
+/**
  * The staff router's own live-status re-check — re-reads the caller's
- * `users` doc on every navigation so a deactivation/archive elsewhere ends
- * an open session immediately (see resolve()'s own comment). Extracted so a
- * second Router instance (Milestone P1's Parent/Student Portal) can supply
- * its own revalidation instead — a guardian has no `users` doc at all, so
- * this exact check would fail every navigation for that session type.
+ * `users` doc so a deactivation/archive elsewhere ends an open session (see
+ * resolve()'s own comment). Extracted so a second Router instance (Milestone
+ * P1's Parent/Student Portal) can supply its own revalidation instead — a
+ * guardian has no `users` doc at all, so this exact check would fail every
+ * navigation for that session type.
+ *
+ * Throws on a failed read instead of reporting "not valid". Those are
+ * different facts and this used to conflate them: `.catch(() => null)` turned
+ * a blinked connection into `false`, and `false` signs the person out and
+ * reloads. Giving reads a deadline (BUG-302) made that reachable rather than
+ * theoretical — a stalled read now rejects where it used to hang, so the fix
+ * for a frozen screen would have become an unexplained sign-out. resolve()
+ * treats a thrown error as "cannot tell, carry on".
  */
 async function defaultRevalidate() {
-    const current = await users$.find(session.user.id).catch(() => null);
+    const current = await users$.find(session.user.id);
     return Boolean(current && current.status === 'active');
 }
 
@@ -69,6 +90,20 @@ class Router {
         this.notFound = null;
         this.revalidate = revalidate;
         this.isAuthenticated = isAuthenticated;
+        this.revalidatedAt = 0;
+    }
+
+    /**
+     * The status check, at most once per REVALIDATE_EVERY_MS.
+     *
+     * Only a successful check refreshes the clock, so a run of failed reads
+     * keeps retrying on each navigation rather than being cached as "checked".
+     */
+    async revalidateIfDue() {
+        if (Date.now() - this.revalidatedAt < REVALIDATE_EVERY_MS) return true;
+        const valid = await this.revalidate();
+        this.revalidatedAt = Date.now();
+        return valid;
     }
 
     /**
@@ -157,7 +192,16 @@ class Router {
         // a same-browser session actually notices. Pluggable per Router
         // instance (see defaultRevalidate() above) — a guardian session
         // supplies its own check instead of this staff-specific one.
-        const stillValid = await this.revalidate().catch(() => false);
+        // A thrown error means the check could not be made, not that it
+        // failed. Only an authoritative "this account is no longer active"
+        // ends the session; an unreachable server leaves it alone and tries
+        // again on the next navigation.
+        let stillValid = true;
+        try {
+            stillValid = await this.revalidateIfDue();
+        } catch (err) {
+            console.warn('Could not re-check account status — keeping the session.', err);
+        }
         if (superseded()) return;
         if (!stillValid) {
             await expireSession();
@@ -266,95 +310,106 @@ class Router {
 
     /* -------------------------------------------------------- FALLBACK VIEWS */
 
+    /*
+     * All five views below are written in this app's own `m-` classes.
+     *
+     * They used to be the desktop app's markup — page-header/page-body/card/
+     * card-body/empty/skeleton-kpi — inherited when this router was copied
+     * across. index.html loads five stylesheets and components.css and
+     * modules.css are deliberately not among them (see its own comment: "no
+     * migrated screen needs" them). These views were the exception nobody
+     * spotted, because they are the screens you only reach when something has
+     * already gone wrong: not found, not permitted, failed to download,
+     * threw. Every one of them rendered as unstyled black-on-white text in
+     * the middle of the shell — at precisely the moment the reader most needs
+     * the app to look like it is still in control.
+     */
+
     renderLoading() {
+        render(this.viewport, html`<div class="m-skeleton">Loading…</div>`);
+    }
+
+    /**
+     * Shared frame for the four failure views, so they cannot drift apart
+     * the way the originals drifted from the app around them.
+     */
+    fallback({ glyph, title, text, detail, actions }) {
         render(this.viewport, html`
-            <div class="page-header">
-                <div class="page-header-text">
-                    <div class="skeleton skeleton-title" style="width:200px;height:22px"></div>
+            <div class="m-card m-empty" role="alert" style="text-align:left;">
+                <div style="display:flex;gap:10px;align-items:flex-start;">
+                    <span style="flex-shrink:0;opacity:0.7;">${raw(icon(glyph, { size: 20 }))}</span>
+                    <div style="flex:1;min-width:0;">
+                        <h2 class="m-card-title">${title}</h2>
+                        <p class="m-card-meta" style="margin-top:6px;">${text}</p>
+                        ${detail ? html`
+                            <p class="m-card-meta" style="margin-top:8px;opacity:0.75;word-break:break-word;">
+                                ${detail}
+                            </p>
+                        ` : ''}
+                        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;">${actions}</div>
+                    </div>
                 </div>
-            </div>
-            <div class="page-body">
-                <div class="grid grid-4">
-                    ${[1, 2, 3, 4].map(() => html`<div class="skeleton skeleton-kpi"></div>`)}
-                </div>
-                <div class="skeleton skeleton-chart"></div>
             </div>
         `);
     }
 
     renderNotFound(path) {
-        render(this.viewport, html`
-            <div class="page-body">
-                <div class="card"><div class="card-body">
-                    <div class="empty">
-                        <div class="empty-glyph">${raw(icon('compass'))}</div>
-                        <h2 class="empty-title">There is no page at ${path}</h2>
-                        <p class="empty-text">The link may be from an older version of Natyam ERP,
-                        or the record it pointed to has been removed.</p>
-                        <div class="empty-actions">
-                            <a class="btn btn-primary" href="#/">Go to dashboard</a>
-                        </div>
-                    </div>
-                </div></div>
-            </div>
-        `);
+        this.fallback({
+            glyph: 'compass',
+            title: `There is no page at ${path}`,
+            text: `The link may be from an older version of Natyam ERP, or the record it
+                   pointed to has been removed.`,
+            actions: html`<a class="m-btn m-btn-sm" href="#/">Go to dashboard</a>`
+        });
     }
 
     renderDenied(route) {
-        render(this.viewport, html`
-            <div class="page-body">
-                <div class="card"><div class="card-body">
-                    <div class="empty">
-                        <div class="empty-glyph">${raw(icon('lock'))}</div>
-                        <h2 class="empty-title">${route.title || 'This module'} is not available to your role</h2>
-                        <p class="empty-text">You are signed in as ${session.roleLabel()}.
-                        An Administrator can grant access in Settings → Roles.</p>
-                        <div class="empty-actions">
-                            <a class="btn btn-secondary" href="#/">Back to dashboard</a>
-                        </div>
-                    </div>
-                </div></div>
-            </div>
-        `);
+        this.fallback({
+            glyph: 'lock',
+            title: `${route.title || 'This module'} is not available to your role`,
+            text: `You are signed in as ${session.roleLabel()}. An Administrator can grant
+                   access in Settings → Roles.`,
+            actions: html`<a class="m-btn m-btn-sm" href="#/">Back to dashboard</a>`
+        });
     }
 
+    /**
+     * The module's JavaScript did not arrive. Retrying the navigation is
+     * offered before reloading because a failed dynamic import is usually a
+     * dropped request rather than a bad build, and re-importing costs the
+     * reader nothing — where a reload costs them the whole app and whatever
+     * they had on screen.
+     */
     renderLoadFailure(path, err) {
-        render(this.viewport, html`
-            <div class="page-body">
-                <div class="card"><div class="card-body">
-                    <div class="empty">
-                        <div class="empty-glyph">${raw(icon('cloud-off'))}</div>
-                        <h2 class="empty-title">This module could not be loaded</h2>
-                        <p class="empty-text">Natyam ERP loads each module the first time you open it.
-                        This one did not arrive — usually because the app files are still downloading,
-                        or the browser cache holds a partial copy.</p>
-                        <p class="type-mono type-caption">${err.message}</p>
-                        <div class="empty-actions">
-                            <button class="btn btn-primary" onclick="location.reload()">Reload the app</button>
-                            <a class="btn btn-secondary" href="#/">Back to dashboard</a>
-                        </div>
-                    </div>
-                </div></div>
-            </div>
-        `);
+        this.fallback({
+            glyph: 'cloud-off',
+            title: 'This module could not be loaded',
+            text: `Natyam ERP loads each module the first time you open it. This one did not
+                   arrive — usually because the app files are still downloading, or the
+                   browser cache holds a partial copy.`,
+            detail: err.message,
+            actions: html`
+                <button class="m-btn m-btn-sm" data-action="retry-route">Try again</button>
+                <a class="m-btn m-btn-sm" href="#/">Back to dashboard</a>
+            `
+        });
+        this.viewport.querySelector('[data-action="retry-route"]')
+            ?.addEventListener('click', () => this.resolve());
     }
 
     renderError(err) {
-        render(this.viewport, html`
-            <div class="page-body">
-                <div class="card"><div class="card-body">
-                    <div class="empty">
-                        <div class="empty-glyph">${raw(icon('alert-triangle'))}</div>
-                        <h2 class="empty-title">This page hit an error</h2>
-                        <p class="empty-text">Your data is unaffected — nothing was written.</p>
-                        <p class="type-mono type-caption">${err.message}</p>
-                        <div class="empty-actions">
-                            <button class="btn btn-primary" onclick="location.reload()">Reload</button>
-                        </div>
-                    </div>
-                </div></div>
-            </div>
-        `);
+        this.fallback({
+            glyph: 'alert-triangle',
+            title: 'This page hit an error',
+            text: 'Your data is unaffected — nothing was written.',
+            detail: err.message,
+            actions: html`
+                <button class="m-btn m-btn-sm" data-action="retry-route">Try again</button>
+                <a class="m-btn m-btn-sm" href="#/">Back to dashboard</a>
+            `
+        });
+        this.viewport.querySelector('[data-action="retry-route"]')
+            ?.addEventListener('click', () => this.resolve());
     }
 }
 
