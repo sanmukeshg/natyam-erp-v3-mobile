@@ -1491,6 +1491,27 @@ body {
     padding-bottom: 0;
 }
 
+/*
+ * No focus ring on the scroll region.
+ *
+ * The router focuses .m-content after every navigation so a screen-reader or
+ * keyboard user lands on the new page instead of the bottom of the old one.
+ * It carries tabindex="-1" precisely because nobody tabs to it — the focus is
+ * programmatic bookkeeping, not the user pointing at something.
+ *
+ * WebKit still matches :focus-visible on that programmatic focus, which drew
+ * base.css's 2px --focus-ring (indigo) around the element. Left and right
+ * edges fall outside the viewport, so on an iPhone it appeared as two blue
+ * lines pinned above and below the page — after every single navigation.
+ *
+ * Scoped to this element only: real focus rings on real controls stay exactly
+ * as they are, which is why this is not a blanket outline:none.
+ */
+.m-content:focus,
+.m-content:focus-visible {
+    outline: none;
+}
+
 /* BUG-301 — a cancelled class on the attendance board. Dimmed and inert: it
    is rendered as a div rather than a button, so this only has to look
    unavailable, not also behave that way. `cursor: default` matters because
