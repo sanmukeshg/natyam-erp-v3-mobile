@@ -166,16 +166,7 @@
     overflow: hidden;
     background:
         linear-gradient(var(--v3-scrim), var(--v3-scrim)),
-        /*
-         * No `fixed` here. background-attachment: fixed has never worked
-         * properly on iOS Safari — it sizes the image against the viewport but
-         * paints it against the initial containing block, so on an iPhone the
-         * artwork stopped short of the bottom and let html's flat --v3-chrome
-         * band across the home-indicator strip. It also bought nothing: this
-         * shell has overflow:hidden and never scrolls (.m-content is the
-         * scroller), so a scroll-attached background is already stationary.
-         */
-        var(--v3-backdrop) center / cover no-repeat;
+        var(--v3-backdrop) center / cover no-repeat fixed;
     font-family: var(--font-ui);
 }
 
@@ -1457,82 +1448,15 @@ a.m-attn:hover { text-decoration: none; }
 
 :root { --v3-chrome: #3d1f11; }
 
-/*
- * The same measurement taken at the other end: #22100a is the average of the
- * BOTTOM 24 rows of login-mobile-bg.jpg, where --v3-chrome is the average of
- * the top.
- *
- * Both are needed because the two ends of this artwork are not the same
- * colour — the top is a lit wall, the bottom is a dark carved floor. --v3-chrome
- * is correct for the status bar, which sits over the wall, and wrong for
- * anything at the bottom by roughly the difference between #3d1f11 and
- * #22100a. That difference is the band: iOS gives the page 797pt of an 844pt
- * screen and fills the remainder itself, and it was filling it with the top
- * colour against the bottom of the picture.
- *
- * This is the same trick the landing screen has always used — its own fill is
- * #140907, sampled from intro-mobile.jpg's bottom edge — and it is exactly why
- * the landing is the one screen with no visible band while the shell, the boot
- * screen and sign-in all show one.
- */
-:root { --v3-chrome-bottom: #22100a; }
 
 html, body {
-    /*
-     * The artwork, not a flat colour.
-     *
-     * This layer only ever shows where something above it fails to reach the
-     * physical bottom of the screen — which on iOS is not hypothetical: it is
-     * what put a band of flat #3d1f11 under the boot screen and under the app
-     * shell on an iPhone, across the home-indicator strip.
-     *
-     * Painting the same backdrop at the same size means that when it does show
-     * through, it continues the picture instead of interrupting it. --v3-chrome
-     * stays underneath as the colour behind the image while it loads, and for
-     * the first paint before any stylesheet has decoded it.
-     *
-     * min-height keeps the box itself full-height: on iOS the visual viewport
-     * shrinks when the keyboard opens, and a short body would band regardless
-     * of what colour it is.
-     */
-    background: var(--v3-chrome-bottom) var(--v3-backdrop) center / cover no-repeat;
+    background: var(--v3-chrome);
+    /* Belt and braces with the shell's own height: on iOS the visual viewport
+       shrinks when the keyboard opens, and a body shorter than the layout
+       viewport would let the chrome colour band across the bottom. */
     min-height: 100%;
 }
 
-/*
- * The document itself must not scroll while the shell is mounted.
- *
- * `min-height: 100%` above lets the document grow taller than the viewport,
- * and iOS then rubber-bands the whole page: drag anywhere and the shell lifts
- * to reveal the body behind it, then springs back. That is the "raising from
- * below, settles when you let go" — nothing is wrong with the layout, the page
- * is simply bouncing, and what shows underneath is body's own background.
- *
- * .m-content is already the only thing meant to scroll (the shell is a flex
- * column with overflow:hidden), so pinning the document costs nothing and
- * removes the outer scroller that was doing the bouncing. overscroll-behavior
- * alone does not stop it on iOS — Safari still bounces the document even with
- * `none`, which is why body already carried that and still moved.
- *
- * Scoped with :has() so it applies ONLY when the shell is on screen. The
- * landing, sign-in and public pages are ordinary scrolling documents and must
- * stay that way; a blanket overflow:hidden would trap their content. Browsers
- * without :has() keep the previous behaviour rather than breaking.
- *
- * #boot is included for the same reason and it is not redundant: the boot
- * screen is static markup in index.html that paints before app.js has built
- * anything, so during those first seconds .m-shell does not exist and the
- * document is unpinned and free to bounce. That is why the band outlived the
- * reinstall on the splash while the app behind it was already correct.
- */
-html:has(.m-shell),
-html:has(.m-shell) body,
-html:has(#boot),
-html:has(#boot) body {
-    height: 100%;
-    overflow: hidden;
-    overscroll-behavior: none;
-}
 
 body {
     overscroll-behavior: none;

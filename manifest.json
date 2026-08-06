@@ -7,7 +7,7 @@
     "display": "standalone",
     "display_override": ["standalone"],
     "orientation": "portrait",
-    "background_color": "#22100a",
+    "background_color": "#3d1f11",
     "theme_color": "#3d1f11",
     "categories": ["education", "productivity", "business"],
     "icons": [

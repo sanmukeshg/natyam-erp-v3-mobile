@@ -422,12 +422,6 @@
     .auth-screen[data-state="signin"] {
         background-image: url("../img/brand/login-mobile-bg.jpg");
         background-size: cover; background-position: center top;
-        /* Its own fill, overriding .auth-screen's #140907. That value is
-           intro-mobile.jpg's bottom edge and belongs to the hero; this state
-           swaps in a DIFFERENT picture whose bottom edge is #22100a. Sharing
-           one fill between two images was why sign-in showed a band and the
-           hero next door did not. */
-        background-color: #22100a;
     }
 
     .auth-signin {
@@ -509,14 +503,7 @@
     .boot-screen {
         background-image: url("../img/brand/login-mobile-bg.jpg");
         background-size: cover; background-position: center;
-        /* login-mobile-bg.jpg's own bottom-edge average, not its mid-tone.
-           This colour is only ever seen at the bottom of the screen — the
-           47pt iOS keeps for itself — so it has to match the dark carved
-           floor there, not the lit wall higher up. #3F1A12 was the latter,
-           and read as a band. Same value as --v3-chrome-bottom in v3.css;
-           duplicated rather than shared because this file is deliberately
-           token-independent (see its header). */
-        background-color: #22100a;
+        background-color: #3F1A12;
     }
     .boot-mark { width: 112px; height: 112px; }
     .boot-bar { width: 200px; }
