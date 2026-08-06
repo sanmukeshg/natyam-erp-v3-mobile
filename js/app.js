@@ -49,6 +49,7 @@ import { renderLogin } from './modules/auth/login.page.js';
 import { pendingPage } from './modules/system/pending.page.js';
 import { resolveProvisionedUser, expireSession, acknowledgeRemoteSignOut } from './services/auth.service.js';
 import { resolveGuardianIdentity, guardianSession } from './services/portal/guardianAuth.service.js';
+import { isReadTimeout } from './data/firestoreRead.js';
 
 /**
  * The guardian portal's six read-only pages, lazily imported the same way the
@@ -492,7 +493,15 @@ async function hydrateSession(user) {
         branches = await branches$.active();
     } catch (err) {
         console.error('Could not load branches at sign-in', err);
-        toast.error(`Could not load your branches — ${err.message}. Reload to try again.`);
+        // Two sentences were being glued into one. A timed-out read now carries
+        // a full sentence of its own ("This is taking longer than expected —
+        // branches did not respond."), and dropping that inside this one gave a
+        // second em-dash clause and a doubled full stop. A stall gets its own
+        // short wording; anything else keeps its detail, minus the trailing
+        // stop it may already have.
+        toast.error(isReadTimeout(err)
+            ? 'Could not load your branches — the connection stalled. Reload to try again.'
+            : `Could not load your branches — ${String(err.message || 'unexpected error').replace(/\.\s*$/, '')}. Reload to try again.`);
     }
 
     session.hydrate({ user, branches, activeBranchId: null });
