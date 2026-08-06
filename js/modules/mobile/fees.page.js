@@ -34,9 +34,11 @@ import { session } from '../../core/session.js';
 import { EVENTS } from '../../core/bus.js';
 import { formatMoney, formatMoneyShort } from '../../utils/money.js';
 import { formatDate, formatDateLong, localDate, startOfMonth } from '../../utils/date.js';
-import { PAYMENT_MODES } from '../../config/app.config.js';
+import { PAYMENT_MODES, PAYMENT_STATUS, CAPABILITIES } from '../../config/app.config.js';
 import { listStudents } from '../../services/students.service.js';
-import { collectionSummary, studentFeeSummary, recordPayment, waiveInvoice } from '../../services/fees.service.js';
+import {
+    collectionSummary, studentFeeSummary, recordPayment, waiveInvoice, refundPayment
+} from '../../services/fees.service.js';
 import { formModal } from '../../ui/form.js';
 import { filterBar, renderFilterPanel, bindFilterToggle } from '../../ui/filterBar.js';
 import { showLoadError } from '../../ui/loadState.js';
@@ -59,6 +61,7 @@ export default class MobileFeesPage extends Page {
         this.search = '';
         this.detail = null;           // { student, fees }
         this.payingInvoice = null;    // the invoice the form is collecting against
+        this.openReceipt = null;      // receipt id whose ⋮ menu is open, or null
         this.busy = false;
         // Arriving from a student profile’s "Collect fee" (UAT BUG-602): that
         // student’s ledger opens straight away, so the hand-off lands on the
@@ -106,6 +109,92 @@ export default class MobileFeesPage extends Page {
         if (!done) return;
         toast.success('Invoice waived', invoice.number);
         await this.load();
+    }
+
+    /** The receipt as it was issued — read-only, and available to anyone who can see fees. */
+    async viewReceipt(paymentId) {
+        const r = (this.detail?.fees?.receipts || []).find((p) => p.id === paymentId);
+        if (!r) return;
+        const reversed = r.status === PAYMENT_STATUS.REFUNDED;
+
+        /*
+         * formModal seeds every field from `values`, not from a `value` on the
+         * field itself — passing the latter renders the labels with empty boxes
+         * beside them, which is a worse receipt than no receipt.
+         */
+        const shown = {
+            amount: formatMoney(r.amount),
+            paidOn: formatDateLong(r.paidOn),
+            mode: r.mode || '—',
+            reference: r.reference || '—',
+            status: reversed ? 'Reversed' : 'Cleared',
+            ...(reversed ? {
+                refundedOn: r.refundedOn ? formatDateLong(r.refundedOn) : '—',
+                refundReason: r.refundReason || '—',
+                refundedBy: r.refundedBy || '—'
+            } : {})
+        };
+
+        await formModal({
+            title: r.receiptNo || 'Receipt',
+            description: reversed
+                ? 'This payment has been reversed. The receipt is kept exactly as it was issued.'
+                : null,
+            submitLabel: 'Close',
+            fields: [
+                { name: 'amount', label: 'Amount', readonly: true },
+                { name: 'paidOn', label: 'Paid on', readonly: true },
+                { name: 'mode', label: 'Mode', readonly: true },
+                { name: 'reference', label: 'Reference', readonly: true },
+                { name: 'status', label: 'Status', readonly: true },
+                ...(reversed ? [
+                    { name: 'refundedOn', label: 'Reversed on', readonly: true },
+                    { name: 'refundReason', label: 'Reason', readonly: true },
+                    { name: 'refundedBy', label: 'Reversed by', readonly: true }
+                ] : [])
+            ],
+            values: shown,
+            onSubmit: () => true
+        });
+    }
+
+    /**
+     * Reverses a payment — the real thing, not a ledger correction.
+     *
+     * refundPayment() marks the payment refunded, restores the invoice balance
+     * and posts the contra ledger entry, all in one transaction. That last part
+     * matters: the Finance → Ledger "Reverse" button writes only the ledger row,
+     * which is how receipt NAT/RCP/26/0005 ended up reversed in the books while
+     * the student still showed nothing owing. There is exactly one correct way
+     * to undo a payment and this is it.
+     *
+     * The reason is required by the service and required here, because it is
+     * the only part of the audit trail a person supplies.
+     */
+    async reversePayment(paymentId) {
+        const r = (this.detail?.fees?.receipts || []).find((p) => p.id === paymentId);
+        if (!r) return;
+
+        const done = await formModal({
+            title: `Reverse ${r.receiptNo || 'this payment'}?`,
+            description: `${formatMoney(r.amount)} goes back onto the student's outstanding balance. `
+                + 'The receipt stays on record, marked reversed — nothing is deleted.',
+            submitLabel: 'Reverse payment',
+            fields: [
+                { name: 'reason', label: 'Reason', type: 'textarea', rows: 3, required: true,
+                  help: 'Cheque bounced, paid twice, wrong student — someone will ask later.' }
+            ],
+            values: { reason: '' },
+            onSubmit: (v) => refundPayment(r.id, { reason: v.reason })
+        });
+
+        if (!done) return;
+        this.openReceipt = null;
+        toast.success('Payment reversed', `${formatMoney(r.amount)} is outstanding again.`);
+        await this.load();
+        // The sheet is showing this student, so refresh it too — load() only
+        // refreshes the list behind it.
+        if (this.detail?.student?.id) await this.open(this.detail.student.id);
     }
 
     async load() {
@@ -238,6 +327,11 @@ export default class MobileFeesPage extends Page {
 
         const { student, fees } = this.detail;
         const canCollect = session.can('fee.collect');
+        // fee.refund, not fee.collect: reversing money already taken is a
+        // heavier act than taking it. Administrator and Owner & Accountant hold
+        // it; Teacher & Reception and Viewer do not, which is the split the
+        // requirement asks for and the one app.config.js already defines.
+        const canRefund = session.can(CAPABILITIES.FEE_REFUND);
         const open = (fees.invoices || [])
             .filter((i) => i.status !== 'cancelled' && i.balance > 0)
             .sort((a, b) => (a.dueDate || '').localeCompare(b.dueDate || ''));
@@ -312,14 +406,50 @@ export default class MobileFeesPage extends Page {
 
                     ${fees.receipts?.length ? html`
                         <p class="m-section-label" style="margin:6px 0 0;color:var(--v3-muted);text-shadow:none;">Recent receipts</p>
-                        <dl class="m-facts">
-                            ${fees.receipts.slice(0, 5).map((r) => html`
-                                <div class="m-fact">
-                                    <dt>${r.receiptNo || 'Receipt'} · ${formatDate(r.paidOn)}</dt>
-                                    <dd>${formatMoney(r.amount)}</dd>
-                                </div>
-                            `)}
-                        </dl>
+                        <div class="m-stack">
+                            ${fees.receipts.slice(0, 5).map((r) => {
+                                const reversed = r.status === PAYMENT_STATUS.REFUNDED;
+                                return html`
+                                    <div class="m-invoice"
+                                         style="border-left-color:${reversed ? 'var(--v3-tone-neutral)' : 'var(--v3-positive)'};">
+                                        <div class="m-invoice-main">
+                                            <div class="m-invoice-no">${r.receiptNo || 'Receipt'}</div>
+                                            <div class="m-invoice-due">
+                                                ${formatDate(r.paidOn)}${reversed ? ` · reversed ${formatDate(r.refundedOn)}` : ''}
+                                            </div>
+                                        </div>
+                                        <span class="m-badge" data-fee="${reversed ? '' : 'clear'}"
+                                              style="${reversed ? 'text-decoration:line-through;opacity:0.6;' : ''}">
+                                            ${formatMoney(r.amount)}
+                                        </span>
+                                        <button class="m-icon-btn" data-action="receipt-menu" data-id="${r.id}"
+                                                aria-label="Actions for ${r.receiptNo || 'this receipt'}"
+                                                aria-expanded="${this.openReceipt === r.id ? 'true' : 'false'}">
+                                            ${raw(icon('more-vertical', { size: 16 }))}
+                                        </button>
+                                    </div>
+
+                                    ${this.openReceipt === r.id ? html`
+                                        <div class="m-actions" style="margin-top:-6px;">
+                                            <button class="m-btn m-btn-ghost" data-action="view-receipt" data-id="${r.id}">
+                                                View receipt
+                                            </button>
+                                            ${canRefund && !reversed ? html`
+                                                <button class="m-btn m-btn-ghost" data-action="reverse-payment" data-id="${r.id}">
+                                                    Reverse payment
+                                                </button>
+                                            ` : ''}
+                                        </div>
+                                        ${reversed ? html`
+                                            <div class="m-notice" data-tone="info" style="margin-top:-6px;">
+                                                Reversed on ${formatDate(r.refundedOn)}${r.refundReason ? ` — ${r.refundReason}` : ''}.
+                                                A reversal cannot itself be undone; collect the fee again to correct it.
+                                            </div>
+                                        ` : ''}
+                                    ` : ''}
+                                `;
+                            })}
+                        </div>
                     ` : ''}
 
                     ${!open.length && !fees.receipts?.length
@@ -484,6 +614,16 @@ export default class MobileFeesPage extends Page {
         this.onDispose(on(root, 'click', '.m-profile', (event) => event.stopPropagation()));
 
         this.onDispose(on(root, 'click', '[data-action="waive"]', (_e, t) => this.waive(t.dataset.id)));
+
+        // The ⋮ menu is one-at-a-time: opening a second closes the first, and
+        // tapping the same one again closes it. Repainting the sheet is what
+        // renders the change, so the menu state lives on the page, not the DOM.
+        this.onDispose(on(root, 'click', '[data-action="receipt-menu"]', (_e, t) => {
+            this.openReceipt = this.openReceipt === t.dataset.id ? null : t.dataset.id;
+            this.paintSheet();
+        }));
+        this.onDispose(on(root, 'click', '[data-action="view-receipt"]', (_e, t) => this.viewReceipt(t.dataset.id)));
+        this.onDispose(on(root, 'click', '[data-action="reverse-payment"]', (_e, t) => this.reversePayment(t.dataset.id)));
 
         this.onDispose(on(root, 'click', '[data-action="collect"]', (_e, t) => {
             this.payingInvoice = this.detail?.fees.invoices.find((i) => i.id === t.dataset.id) || null;
