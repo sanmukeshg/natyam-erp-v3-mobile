@@ -24,6 +24,9 @@ import {
 import { dayBoard, trend as attendanceTrend, missingRegisters } from './attendance.service.js';
 import { collectionSummary } from './fees.service.js';
 import { currentMonthPosition, monthlySeries } from './finance.service.js';
+// UAT5 ENH-506 — the Current Trends charts. Reused, not reimplemented: these
+// are the same four series the Analytics screen draws.
+import { studentGrowth, attendanceTrendSeries, collectionTrend } from './analytics.service.js';
 import { pipeline } from './admissions.service.js';
 import { recentActivity } from './audit.service.js';
 
@@ -41,6 +44,7 @@ import { recentActivity } from './audit.service.js';
  */
 const PANELS = {
     headline:   (branchId) => headline(branchId),
+    trends:     (branchId) => trends(branchId),
     today:      (branchId) => today(branchId),
     money:      (branchId) => money(branchId),
     admissions: (branchId) => admissionsPanel(branchId),
@@ -209,6 +213,59 @@ export async function today(branchId = null) {
         registersDone: done,
         registersPending: board.batches.length - done,
         studentsExpected: board.batches.reduce((sum, b) => sum + b.expected, 0)
+    };
+}
+
+/**
+ * Six months of every trend the owner's Current Trends section draws — UAT5
+ * ENH-506.
+ *
+ * ONE PANEL, FOUR SERIES, AND NOTHING NEW. Every series already existed for the
+ * Analytics screen; this only gathers the four the dashboard charts and leaves
+ * the other six of analyticsOverview() alone. Reimplementing any of them here
+ * would put a second definition of "student growth" in the codebase, which is
+ * the exact mistake the note at the top of this file exists to prevent.
+ *
+ * ⚠ THIS IS THE MOST EXPENSIVE PANEL ON THE DASHBOARD, and it is deliberately
+ * a separate one so it can be paid for separately. `collectionTrend()` reads
+ * every invoice and then summarises collections month by month, and
+ * `studentGrowth()` reads every student — on the busiest screen in the app.
+ * The page therefore paints its figures and its Needs attention list FIRST and
+ * asks for this afterwards (see dashboard.page.js), so the trends cost nobody a
+ * slower dashboard, only a chart that arrives a moment later. If read volume
+ * ever needs cutting, this panel is the first place to look and dropping it
+ * degrades one section rather than breaking the screen.
+ *
+ * Six months, not twelve: these are thumbnails on a phone. Analytics is where a
+ * longer range belongs, and it offers up to a custom window.
+ */
+export async function trends(branchId = null) {
+    const [money6, growth, attendance, collection] = await Promise.all([
+        monthlySeries(6, branchId),
+        studentGrowth(6, branchId),
+        attendanceTrendSeries(6, branchId),
+        collectionTrend(6, branchId)
+    ]);
+
+    // The income/expense split is the current month's slice of the series
+    // already fetched — a fifth query for two numbers already in hand would be
+    // waste, and a second source for them would be a second answer.
+    const current = money6[money6.length - 1] || { income: 0, expense: 0, net: 0 };
+
+    return {
+        money: money6.map((row) => ({
+            period: row.period,
+            label: formatMonth(row.period),
+            income: row.income,
+            expense: row.expense,
+            net: row.net
+        })),
+        growth: growth.map((row) => ({ period: row.period, label: row.label, total: row.total, netChange: row.netChange })),
+        attendance: attendance.map((row) => ({ period: row.period, label: row.label, rate: row.rate })),
+        collection: collection.map((row) => ({
+            period: row.period, label: row.label, billed: row.billed, collected: row.collected, rate: row.rate
+        })),
+        split: { income: current.income, expense: current.expense, net: current.net }
     };
 }
 

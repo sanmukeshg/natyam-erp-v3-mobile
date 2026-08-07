@@ -35,6 +35,12 @@ import { formatDateLong } from '../../utils/date.js';
 import { roleLabel, roleCapabilities, PREFERENCE_DEFAULTS } from '../../config/app.config.js';
 import { users$, authMethodsOf } from '../../data/repositories.js';
 import { setOwnPassword, logout } from '../../services/auth.service.js';
+// UAT5 ENH-510. The Messaging SDK itself is NOT pulled in by this import —
+// push.service.js loads it dynamically, and only when someone enables push.
+import {
+    pushSupport, currentSubscription, enablePush, disablePush, updatePushPreferences,
+    PUSH_CATEGORIES, REMINDER_LEADS, PUSH_DEFAULTS
+} from '../../services/push.service.js';
 
 const METHOD_LABEL = {
     google: { label: 'Google', icon: 'user' },
@@ -67,8 +73,25 @@ export default class MobileProfilePage extends Page {
 
     async load() {
         try {
-            this.account = await users$.find(session.actorId());
+            /*
+             * The account and the push state together — UAT5 ENH-510.
+             *
+             * currentSubscription() asks the browser for its token and looks it
+             * up, so it costs one Firestore read only on a device that already
+             * has notifications on; everywhere else it short-circuits on the
+             * permission check. Failure is swallowed: push is the least
+             * important thing on this screen and must never be the reason
+             * somebody cannot see their own account.
+             */
+            const [account, support, subscription] = await Promise.all([
+                users$.find(session.actorId()),
+                Promise.resolve(pushSupport()),
+                currentSubscription().catch(() => null)
+            ]);
             if (this.disposed) return;
+            this.account = account;
+            this.pushSupport = support;
+            this.pushSubscription = subscription;
             this.paint();
         } catch (err) {
             if (this.disposed) return;
@@ -76,6 +99,104 @@ export default class MobileProfilePage extends Page {
             this.account = null;
             this.paint(err.message);
         }
+    }
+
+    /**
+     * Push notification preferences — UAT5 ENH-510.
+     *
+     * PER DEVICE, and the heading says so. Someone with the app on a phone and
+     * a tablet is making a choice about the one in their hand, and a screen
+     * that implied otherwise would be lying — the token, and therefore the
+     * preference, belongs to the browser it was issued in.
+     *
+     * WHEN PUSH CANNOT WORK, SAY WHICH THING IS MISSING. "Not supported" is a
+     * dead end; "add Natyam to your Home Screen first" is an instruction, and
+     * on iPhone it is the correct one — Safari only exposes push to an
+     * installed app. pushSupport() draws that distinction and this renders it.
+     *
+     * The switch is honest about the half that does not exist yet: until a
+     * sender is deployed, enabling this registers the device and delivers
+     * nothing. Better said plainly here than discovered by a parent waiting for
+     * a reminder that never comes.
+     */
+    notificationsSection() {
+        const support = this.pushSupport;
+        if (!support) return '';           // still resolving on first paint
+
+        const sub = this.pushSubscription;
+        const on = Boolean(sub);
+        const role = session.role();
+        const categories = PUSH_CATEGORIES.filter((c) => !c.roles.length || c.roles.includes(role));
+        const chosen = new Set(sub?.categories || PUSH_DEFAULTS.categories);
+
+        return html`
+            <h2 class="m-section-label">Notifications on this device</h2>
+
+            ${!support.supported || !support.configured ? html`
+                <div class="m-card" style="padding:14px;margin-bottom:20px;">
+                    <p class="m-profile-note" style="margin:0;">${support.reason}</p>
+                </div>
+            ` : html`
+                <div class="m-card" style="padding:14px;margin-bottom:10px;">
+                    <div class="m-subhead-row" style="justify-content:space-between;gap:12px;">
+                        <div style="min-width:0;">
+                            <div class="m-student-name">Push notifications</div>
+                            <div class="m-student-meta">
+                                ${on
+                                    ? 'On for this device.'
+                                    : 'Get reminders even when the app is closed.'}
+                            </div>
+                        </div>
+                        <button class="m-btn ${on ? 'm-btn-ghost' : ''}"
+                                data-action="toggle-push" ${this.busy ? 'disabled' : ''}>
+                            ${this.busy ? 'Working…' : on ? 'Turn off' : 'Turn on'}
+                        </button>
+                    </div>
+
+                    <!--
+                      Stated on the screen, not only in a commit message. The
+                      client half is real and the sender is not built yet, so a
+                      person enabling this today would otherwise be waiting for
+                      something that cannot arrive.
+                    -->
+                    ${on ? html`
+                        <p class="m-subhead-note" style="margin:10px 0 0;">
+                            Reminders start arriving once the school’s notification service is switched
+                            on. Everything you choose here is saved and applies from that moment.
+                        </p>
+                    ` : ''}
+                </div>
+
+                ${on ? html`
+                    <div class="m-card" style="padding:14px;margin-bottom:10px;">
+                        <div class="m-kpi-label" style="margin-bottom:10px;">What to send</div>
+                        ${categories.map((category) => html`
+                            <label class="m-fact" style="align-items:flex-start;gap:12px;padding:7px 0;cursor:pointer;">
+                                <span style="flex:1;min-width:0;">
+                                    <span style="display:block;color:var(--v3-name);font-size:13px;">${category.label}</span>
+                                    <span style="display:block;color:var(--v3-muted);font-size:11.5px;">${category.help}</span>
+                                </span>
+                                <input type="checkbox" data-role="push-category" value="${category.key}"
+                                       ${chosen.has(category.key) ? 'checked' : ''}
+                                       style="width:20px;height:20px;flex-shrink:0;accent-color:var(--v3-terracotta);">
+                            </label>
+                        `)}
+                    </div>
+
+                    <label class="m-card" style="padding:14px;margin-bottom:20px;display:block;">
+                        <span class="m-kpi-label">Remind me about a class</span>
+                        <select class="m-input" data-role="push-lead" style="margin-top:8px;">
+                            ${REMINDER_LEADS.map((lead) => html`
+                                <option value="${lead.value}"
+                                        ${(sub?.leadMinutes ?? PUSH_DEFAULTS.leadMinutes) === lead.value ? 'selected' : ''}>
+                                    ${lead.label}
+                                </option>
+                            `)}
+                        </select>
+                    </label>
+                ` : ''}
+            `}
+        `;
     }
 
     paint(loadError = null) {
@@ -162,6 +283,8 @@ export default class MobileProfilePage extends Page {
                 `)}
             </div>
 
+            ${this.notificationsSection()}
+
             <h2 class="m-section-label">What you can do</h2>
             <button class="m-card m-announce" data-action="toggle-caps"
                     aria-expanded="${this.showCaps ? 'true' : 'false'}" style="margin-bottom:12px;">
@@ -223,6 +346,47 @@ export default class MobileProfilePage extends Page {
 
     bind() {
         const root = this.container;
+
+        /* --------------------------------------------- PUSH (UAT5 ENH-510) */
+
+        this.onDispose(on(root, 'click', '[data-action="toggle-push"]', async () => {
+            if (this.busy) return;
+            this.busy = true;
+            this.paint();
+
+            const result = this.pushSubscription
+                ? await disablePush()
+                : await enablePush();
+
+            this.busy = false;
+            if (this.disposed) return;
+
+            // A declined permission is a normal answer, not an error — said as
+            // information rather than shouted in red.
+            if (!result.ok) toast.info('Notifications', result.reason);
+            else toast.success(this.pushSubscription ? 'Notifications off' : 'Notifications on');
+
+            await this.load();
+        }));
+
+        // Saved on change rather than behind a Save button: each control is a
+        // single independent choice, and a settings screen that silently
+        // discards a toggle because nobody found the button is worse.
+        const savePreferences = async () => {
+            if (!this.pushSubscription) return;
+            const categories = [...root.querySelectorAll('[data-role="push-category"]')]
+                .filter((node) => node.checked)
+                .map((node) => node.value);
+            const leadMinutes = Number(root.querySelector('[data-role="push-lead"]')?.value)
+                || PUSH_DEFAULTS.leadMinutes;
+
+            const result = await updatePushPreferences({ categories, leadMinutes });
+            if (!result.ok) toast.error('Could not save', result.reason);
+            else this.pushSubscription = { ...this.pushSubscription, categories, leadMinutes };
+        };
+
+        this.onDispose(on(root, 'change', '[data-role="push-category"]', savePreferences));
+        this.onDispose(on(root, 'change', '[data-role="push-lead"]', savePreferences));
 
         this.onDispose(on(root, 'click', '[data-action="password"]', () => {
             this.passwordOpen = true;

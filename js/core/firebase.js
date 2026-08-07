@@ -17,6 +17,10 @@ import { firebaseConfig } from '../config/firebase.config.js';
 
 const app = initializeApp(firebaseConfig);
 
+// Exported for UAT5 ENH-510: getMessaging() needs the app instance, and
+// push.service.js loads the Messaging SDK lazily rather than here — it is
+// another CDN module on a cold start and almost no session uses it.
+export { app };
 export const auth = getAuth(app);
 export const firestore = getFirestore(app);
 

@@ -30,8 +30,14 @@ import {
     INVOICE_STATUS, PAYMENT_STATUS, PAYMENT_MODES, STUDENT_STATUS, feeFrequency
 } from '../config/app.config.js';
 import {
-    invoices$, payments$, students$, feePlans$, settings$, ledger$, reconcile, postPayment, postRefund
+    invoices$, payments$, students$, feePlans$, settings$, ledger$,
+    reconcile, deriveInvoiceStatus, postPayment, postRefund
 } from '../data/repositories.js';
+// UAT5 ENH-507. Every other write in this file records its own history through
+// the repository's audit hook; a waiver reversal has no repository method of
+// its own, so it writes the row itself — the business rules require the user
+// and date on record even when the reason is left blank.
+import { recordAuditEntry } from '../data/auditLog.repository.firestore.js';
 
 /* ==========================================================================
    BILLING
@@ -480,6 +486,126 @@ export async function waiveInvoice(invoiceId, { reason }) {
         console.error('The waiver saved, but its ledger entry did not', err);
     }
 
+    return updated;
+}
+
+/**
+ * Undoes a waiver — UAT5 ENH-507.
+ *
+ * The case is ordinary and had no answer: a fee is written off on hardship,
+ * the family's circumstances change, and they come back to pay it. Until now
+ * the invoice was stuck at `waived` with a zero balance, so there was nothing
+ * to pay against and the only way back was a second invoice for the same
+ * month — which double-counts the billing and loses the waiver's history.
+ *
+ * THREE THINGS HAPPEN, and the order matters:
+ *
+ *   1. The invoice returns to what it was. Balance back to the waived amount,
+ *      status recomputed rather than assumed — a partly-paid invoice returns
+ *      to `partial`, an overdue one to `overdue`, and deriveInvoiceStatus()
+ *      decides which, because it is already the one place that knows.
+ *   2. The waiver's expense is reversed by a CONTRA entry, never a delete.
+ *      Same shape reverseEntry() uses: the original is stamped `reversedBy`
+ *      and the contra carries `sourceType: 'reversal'`, which is exactly the
+ *      pair profitAndLoss() and the cashbook both exclude — so the two cancel
+ *      and Money Out drops by the waived amount, with both rows still visible
+ *      in Advanced accounting. Deleting the original would balance the books
+ *      just as well and destroy the reason the money moved.
+ *   3. The reversal is recorded on the invoice and in the audit log, with who
+ *      and when. The reason is optional, per the business rules, so the audit
+ *      row is the record that it happened at all.
+ *
+ * WHY THE LEDGER IS WRITTEN DIRECTLY rather than through finance.service's
+ * reverseEntry(): that function requires `finance.edit`, which Teacher &
+ * Reception does not hold — and they are precisely the people who take and
+ * undo waivers. waiveInvoice() already writes its ledger row this way and for
+ * this reason; `fee.waive`, checked below, is the authority.
+ *
+ * Non-fatal ledger handling matches waiveInvoice() too: the family's invoice
+ * is what matters, and a ledger that refuses the contra must not leave the
+ * invoice half-reversed.
+ */
+export async function reverseWaiver(invoiceId, { reason = null } = {}) {
+    session.require('fee.waive', 'reverse a waiver');
+
+    const invoice = await invoices$.findOrFail(invoiceId);
+    if (invoice.status !== INVOICE_STATUS.WAIVED) {
+        throw new Error('Only a waived fee can be reversed.');
+    }
+    if (invoice.waiverReversedOn) {
+        throw new Error('This waiver has already been reversed.');
+    }
+
+    // What the waiver forgave. Falls back to the outstanding amount for a row
+    // written before `waivedAmount` was stored, so an old waiver is still
+    // reversible rather than silently restoring a zero balance.
+    const waived = Math.round(invoice.waivedAmount ?? Math.max(0, (invoice.amount || 0) - (invoice.paidAmount || 0)));
+    if (waived <= 0) throw new Error('There is nothing to restore — this waiver forgave no money.');
+
+    const restored = {
+        ...invoice,
+        status: INVOICE_STATUS.OPEN,     // cleared first, so derive() can judge freshly
+        balance: waived,
+        waivedAmount: 0,
+        waiverReason: null,
+        waivedOn: null,
+        waivedBy: null,
+        waiverReversedOn: localDate(),
+        waiverReversedBy: session.actorId(),
+        waiverReversalReason: reason?.trim() || null,
+        // Kept so the history is readable after the fields above are cleared.
+        previousWaiver: {
+            amount: waived,
+            reason: invoice.waiverReason || null,
+            on: invoice.waivedOn || null,
+            by: invoice.waivedBy || null
+        }
+    };
+
+    const updated = await invoices$.update(invoiceId, {
+        ...restored,
+        status: deriveInvoiceStatus(restored)
+    });
+
+    try {
+        const original = (await ledger$.bySource(invoiceId))
+            .find((e) => e.sourceType === 'waiver' && !e.reversedBy) || null;
+
+        const contra = await ledger$.create({
+            type: 'income',                       // opposite of the waiver's expense
+            account: original?.account || 'Other',
+            amount: waived,
+            date: localDate(),
+            period: monthKey(localDate()),
+            narration: `Waiver reversed — ${invoice.number || 'invoice'}${reason?.trim() ? ` — ${reason.trim()}` : ''}`,
+            branchId: invoice.branchId || null,
+            sourceType: 'reversal',
+            sourceId: invoiceId,
+            reversalOf: original?.id || null
+        });
+
+        // Stamping the original is what removes BOTH sides from the P&L and
+        // the cashbook. Without it the contra would be counted as income and
+        // the write-off would look like earnings.
+        if (original) {
+            await ledger$.update(original.id, {
+                reversedBy: contra.id,
+                reversedOn: localDate(),
+                reversalReason: reason?.trim() || 'Waiver reversed'
+            });
+        }
+    } catch (err) {
+        console.error('The waiver was reversed, but its ledger contra did not post', err);
+    }
+
+    await recordAuditEntry('Invoice', 'waiver-reversed', invoiceId, {
+        number: invoice.number || null,
+        restored: waived,
+        originalReason: invoice.waiverReason || null,
+        reason: reason?.trim() || null
+    }).catch((err) => console.error('Waiver reversal audit row failed', err));
+
+    bus.emit(EVENTS.INVOICE_UPDATED, { invoice: updated });
     return updated;
 }
 

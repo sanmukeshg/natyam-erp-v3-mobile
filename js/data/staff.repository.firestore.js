@@ -33,6 +33,9 @@ import {
 } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js';
 import { firestore } from '../core/firebase.js';
 import { session } from '../core/session.js';
+// TEACHING_ROLES, not staff.service's copy — importing that service would
+// close a cycle through repositories.js. See its note in app.config.js.
+import { TEACHING_ROLES } from '../config/app.config.js';
 import { recordAuditEntry } from './auditLog.repository.firestore.js';
 import { nowISO } from '../utils/date.js';
 import { getDoc, getDocs } from './firestoreRead.js';
@@ -145,14 +148,79 @@ class FirestoreStaffRepository {
             .slice(0, max);
     }
 
+    /**
+     * Everyone who may take a batch — UAT5 ENH-512.
+     *
+     * Was `where('role', 'teacher')`: one equality query, and the reason an
+     * Owner could not be assigned to a class without inventing a second
+     * Teacher account for the same person. It now reads every active staff
+     * member and keeps the roles whose `teaches` flag is set.
+     *
+     * A COLLECTION READ WHERE THERE WAS AN INDEXED QUERY, and that is a real
+     * cost accepted deliberately. Firestore's `in` operator would keep this a
+     * query, but it caps at thirty values and — more to the point — would put
+     * the role list in two places, so adding a teaching role to STAFF_ROLES
+     * would silently fail to reach batch assignment. Staff is the smallest
+     * collection in the app (single figures for this school, tens for any
+     * school this software is for), and activeStaff() directly below has
+     * always read it whole for the same reason.
+     */
     async teachers(branchId = null) {
-        const rows = (await this.where('role', 'teacher')).filter((s) => s.status === 'active');
+        const rows = (await this.all())
+            .filter((s) => s.status === 'active' && TEACHING_ROLES.includes(s.role));
         return branchId ? rows.filter((s) => branchIdsOf(s).includes(branchId)) : rows;
     }
 
     async activeStaff(branchId = null) {
         const rows = (await this.all()).filter((s) => s.status === 'active');
         return branchId ? rows.filter((s) => branchIdsOf(s).includes(branchId)) : rows;
+    }
+
+    /**
+     * The staff record behind a signed-in account, matched on email.
+     *
+     * THE MISSING LINK — UAT5 ENH-512, and a live bug in its own right.
+     * `users` documents are keyed by email (`natyam.ssmda@gmail.com`); staff
+     * documents are keyed by a business code (`STF-SUREKHA`); and a batch
+     * stores the staff code. So `session.actorId()` — a user id — could never
+     * match `batch.teacherId`, and the mobile teacher dashboard asked
+     * `byTeacher('…@gmail.com')` and got nothing back. On this school's live
+     * data that is five batches found by staff id and zero by user id: a
+     * teacher signing in saw no classes and no pending registers, ever.
+     *
+     * The join was always present in the data — a staff record carries the
+     * same `email` the user document is keyed by — and simply unused. This is
+     * the one place that uses it, so the two id spaces meet exactly once.
+     *
+     * Returns null for an account with no staff record, which is the normal
+     * case for an Administrator and must stay unremarkable.
+     */
+    async byUserEmail(email) {
+        const key = String(email || '').trim().toLowerCase();
+        if (!key || !key.includes('@')) return null;
+
+        // Matched case-insensitively in the client rather than by query: the
+        // stored value is whatever was typed into the Staff form, and a record
+        // saved as "Natyam.SSMDA@gmail.com" must still resolve.
+        const matches = (await this.all())
+            .filter((s) => String(s.email || '').trim().toLowerCase() === key);
+
+        /*
+         * AN ACTIVE RECORD WINS, always.
+         *
+         * One email can reach two staff records — someone leaves and is later
+         * re-hired, or a record is created rather than edited. This school has
+         * exactly that today: two records carry the Owner's address, one active
+         * with five batches and one inactive with none. A plain `find()`
+         * returns whichever Firestore hands back first, so the Owner's app
+         * would sometimes resolve to the dormant record and tell her she
+         * teaches nothing — intermittently, which is the worst kind.
+         *
+         * Falling back to an inactive match rather than null is deliberate: a
+         * former teacher's own history should still resolve to their record,
+         * and a caller asking "which staff record is this" wants an answer.
+         */
+        return matches.find((s) => s.status === 'active') || matches[0] || null;
     }
 
     /* --------------------------------------------------------------- WRITES */

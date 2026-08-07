@@ -604,19 +604,60 @@ export async function updateUser(id, changes) {
         if (admins.length <= 1) throw new Error('There must always be at least one Administrator.');
     }
 
+    /*
+     * Switching an account off through the EDIT FORM is still a deactivation.
+     *
+     * The form carries a Status field, so this path could set `inactive` while
+     * knowing none of the rules the Deactivate button enforces — the last
+     * Administrator could be switched off from here, locking everyone out, and
+     * someone could sign themselves out permanently mid-session. Same
+     * assertion, same wording, one definition.
+     *
+     * Only a real transition is checked. Re-saving an account that is already
+     * inactive changes nothing and must not be refused, or an inactive user's
+     * name could never be corrected.
+     */
+    if ('status' in changes && changes.status !== 'active' && existing.status === 'active') {
+        await assertMayDeactivate(existing);
+    }
+
     return users$.update(id, changes);
 }
 
-export async function deactivateUser(id) {
+/**
+ * The two rules that make an account safe to switch off.
+ *
+ * EXTRACTED SO BOTH PATHS SHARE THEM. They lived inside deactivateUser() and
+ * guarded only the dedicated Deactivate action — but the Edit dialog also sets
+ * `status`, routes through updateUser(), and knew nothing about either rule.
+ * So an Administrator could set the only Administrator account to Inactive
+ * from the edit form and lock the school out of its own system; the button
+ * six inches away refused exactly that.
+ *
+ * One definition, called from both, is the only arrangement where they cannot
+ * drift apart again — which is how this gap opened in the first place.
+ *
+ * @param {object} user  the account being switched off, already loaded.
+ */
+async function assertMayDeactivate(user) {
     session.require(CAPABILITIES.USER_DEACTIVATE, 'deactivate a user');
 
-    const user = await users$.findOrFail(id);
     if (user.role === 'administrator') {
         requireRoleManagement('deactivate an Administrator account');
+        // Administrator is the sole full-access role, so it can never reach
+        // zero — there would be no way back in.
         const admins = (await users$.activeUsers()).filter((u) => u.role === 'administrator');
         if (admins.length <= 1) throw new Error('The last Administrator account cannot be deactivated.');
     }
-    if (user.id === session.actorId()) throw new Error('You cannot deactivate the account you are signed in with.');
+
+    if (user.id === session.actorId()) {
+        throw new Error('You cannot deactivate the account you are signed in with.');
+    }
+}
+
+export async function deactivateUser(id) {
+    const user = await users$.findOrFail(id);
+    await assertMayDeactivate(user);
 
     return users$.update(id, { status: 'inactive', deactivatedOn: localDate() });
 }

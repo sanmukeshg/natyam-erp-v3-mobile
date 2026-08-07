@@ -399,24 +399,34 @@ export default class MobileStudentsPage extends Page {
                   })),
               help: 'Only batches at the chosen branch. A student with no batch appears on no register.' },
             /*
-             * Required, and still create-only.
+             * Required, and now shown when EDITING too — UAT5-BUG-504.
              *
-             * It was optional, defaulting to "No plan" — and a student created
+             * It was optional and defaulting to "No plan", and a student created
              * without one is never billed at all, silently: raiseSchedule() is
-             * only ever reached when a plan exists, so no plan means no
-             * schedule, no invoice, and nothing on screen saying why. Nobody
-             * picks that on purpose, so the form stops offering it.
+             * only ever reached when a plan exists. Nobody picks that on
+             * purpose, so it is required on create.
              *
-             * Absent when editing, unchanged: choosing a plan raises the
-             * schedule immediately, which is right as a student is created and
-             * wrong as a side effect of correcting a phone number.
+             * It was then hidden on edit, on the grounds that "choosing a plan
+             * raises the schedule immediately, which is wrong as a side effect
+             * of correcting a phone number". THE PREMISE WAS FALSE, which is
+             * why this is a bug and not a preference: raising happens in
+             * enrol(), which calls raiseSchedule() itself. updateStudent() does
+             * not — it writes the field and stops. So editing never billed
+             * anything, and hiding the field bought nothing while making a
+             * student's plan unchangeable from a phone.
+             *
+             * What a change DOES do is real but quiet, and the help text says
+             * it: runBillingScheduler() reads student.feePlanId on every run,
+             * so the next cycle bills on the new plan. Cycles already raised
+             * keep their own periodKey and are never re-billed, so nothing
+             * behind the change moves.
              */
-            ...(existing ? [] : [
-                { name: 'feePlanId', label: 'Fee plan', type: 'select', required: true,
-                  placeholder: 'Choose a fee plan',
-                  options: plans.map((p) => ({ value: p.id, label: `${p.name} — ${formatMoney(p.amount)}` })),
-                  help: 'Raises the fee schedule immediately.' }
-            ]),
+            { name: 'feePlanId', label: 'Fee plan', type: 'select', required: true,
+              placeholder: 'Choose a fee plan',
+              options: plans.map((p) => ({ value: p.id, label: `${p.name} — ${formatMoney(p.amount)}` })),
+              help: existing
+                  ? 'Applies from the next billing cycle. Fees already raised are not changed.'
+                  : 'Raises the fee schedule immediately.' },
             { name: 'joinedOn', label: 'Joined on', type: 'date' },
 
             { type: 'divider', label: 'Guardian' },

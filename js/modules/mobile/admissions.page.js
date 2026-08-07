@@ -44,7 +44,7 @@ import {
     submit as submitApplication, validateStep, ADMISSION_STEPS
 } from '../../services/admissions.service.js';
 import { listBranches, listFeePlans } from '../../services/settings.service.js';
-import { formModal } from '../../ui/form.js';
+import { formModal, confirmModal } from '../../ui/form.js';
 import { filterBar, renderFilterPanel, bindFilterToggle } from '../../ui/filterBar.js';
 import { showLoadError } from '../../ui/loadState.js';
 
@@ -218,17 +218,25 @@ export default class MobileAdmissionsPage extends Page {
 
     async open(id) {
         try {
-            // Fee plans come along with the detail because the enrol step needs
-            // them and cannot ask for them mid-render. Fetched in parallel, and
-            // failing softly: a plan list that could not load must not stop
-            // someone opening an application to read it.
-            const [detail, plans] = await Promise.all([
+            // Fee plans and branches come along with the detail because the
+            // enrol step needs them and cannot ask for them mid-render. Fetched
+            // in parallel, and failing softly: a list that could not load must
+            // not stop someone opening an application to read it.
+            //
+            // Branches joined this call for UAT5-BUG-506. The branch used to be
+            // asked for in a pop-up AFTER Enrol was tapped, which is what made
+            // that pop-up look like a second, contradictory branch step; it is
+            // now a field in the sheet alongside batch and fee plan, so the
+            // list has to be here by the time the sheet paints.
+            const [detail, plans, branches] = await Promise.all([
                 applicationDetail(id),
-                listFeePlans().catch(() => [])
+                listFeePlans().catch(() => []),
+                listBranches().catch(() => [])
             ]);
             if (this.disposed) return;
             this.detail = detail;
             this.feePlans = plans;
+            this.branches = branches;
             this.paintDetail();
         } catch (err) {
             toast.error(`Could not open that application — ${err.message}`);
@@ -315,11 +323,12 @@ export default class MobileAdmissionsPage extends Page {
                                 // Names the preference so whoever opens this knows the
                                 // application is still unassigned and what the family
                                 // asked for. It used to send them to the Desktop ERP to
-                                // fix it; Begin review now asks for the branch here
+                                // fix it; the branch is now asked for here
                                 // (UAT4-BUG-001), so it says where that happens instead
-                                // of pointing at another machine.
+                                // of pointing at another machine — and since UAT5-BUG-506
+                                // that place is the Branch field below, not a pop-up.
                                 app.preferredBranch && !app.branchId
-                                    ? ` The family asked for ${app.preferredBranch} — confirm the branch when you begin review.`
+                                    ? ` The family asked for ${app.preferredBranch} — confirm the branch below before enrolling.`
                                     : ''
                             }
                         </div>
@@ -351,6 +360,42 @@ export default class MobileAdmissionsPage extends Page {
                     ` : ''}
 
                     ${enrolling ? html`
+                        <!--
+                          UAT5-BUG-506 — the branch is chosen HERE, once.
+
+                          It used to be asked in a pop-up after Enrol was tapped,
+                          which put a second branch selector in front of someone
+                          who had already set branch, batch and fee plan, under
+                          buttons ("Cancel" / "Begin review") describing a stage
+                          that no longer exists. The question was never wrong —
+                          a family-submitted application genuinely carries no
+                          branchId — only its placement. It now sits with the
+                          other two enrolment choices, and the pop-up that
+                          follows confirms all three read-only.
+
+                          Only shown when the application has no branch. A
+                          walk-in taken at the desk already carries a real one,
+                          and enrolApplicant() never overwrites it.
+                        -->
+                        ${app.branchId ? '' : html`
+                            <label class="m-facts" style="gap:8px;">
+                                <span style="color:var(--v3-muted);font-size:11.5px;">Which branch? *</span>
+                                <select data-role="branch" required
+                                        style="width:100%;min-height:var(--v3-tap);background:rgba(255,255,255,0.08);color:var(--v3-name);border:1px solid var(--v3-card-border);border-radius:10px;font:inherit;padding:0 10px;">
+                                    <option value="">Choose a branch…</option>
+                                    ${(this.branches || []).map((branch) => html`
+                                        <option value="${branch.id}"
+                                                ${branch.id === this.suggestedBranchId(app) ? 'selected' : ''}>${branch.name}</option>
+                                    `)}
+                                </select>
+                            </label>
+                            ${this.branches?.length ? '' : html`
+                                <div class="m-notice" data-tone="caution">
+                                    No branches are set up yet — add one in Settings before enrolling.
+                                </div>
+                            `}
+                        `}
+
                         <label class="m-facts" style="gap:8px;">
                             <span style="color:var(--v3-muted);font-size:11.5px;">Enrol into which batch? *</span>
                             <select data-role="batch" required
@@ -416,54 +461,85 @@ export default class MobileAdmissionsPage extends Page {
     /* -------------------------------------------------------------- ACTIONS */
 
     /**
-     * The branch a self-submitted application still needs — UAT4-BUG-001.
+     * Which branch the Branch field should start on — UAT4-BUG-001.
      *
      * A parent applying through the public site never supplies a branch id:
      * /branches is staff-gated, and the public Branches page is hand-written
      * Website Content carrying names only, so they name the branch they want as
      * free text (`preferredBranch`). createSelfSubmitted() therefore skips the
-     * branchId check that update() enforces — which meant Begin review, the very
-     * next step, threw "Choose the branch being applied to." with no way on this
-     * screen to answer it. The detail card said to go and do it in the Desktop
-     * ERP; an owner holding a phone in the studio is exactly who this screen is
-     * for, so it asks instead.
+     * branchId check that update() enforces, and the gap has to be filled before
+     * the applicant can be enrolled.
      *
-     * Returns a branch id, or null if the person backed out — never a partial
-     * write. enrolApplicant() only ever fills a gap, so passing one for an
-     * application that already has a branch cannot overwrite it.
+     * The service's own suggestBranchFor() runs first — it already arrives with
+     * the detail, and it matches by containment, which is what catches an ERP
+     * record simply called "Kondapur". Its comparison is otherwise literal, so
+     * a second, dash-normalised pass follows: the CMS carries "Natyam -
+     * Kondapur" (hyphen) where the Branch record is "Natyam – Kondapur" (en
+     * dash), and neither string contains the other. A single branch is the
+     * answer by elimination.
+     *
+     * A DEFAULT, NOT A DECISION. The field stays editable and the confirmation
+     * dialog restates it, so a wrong guess costs one tap to correct.
      */
-    async askForBranch(app) {
-        const branches = await listBranches();
-        if (!branches.length) throw new Error('No branches are set up yet — add one in Settings first.');
+    suggestedBranchId(app) {
+        if (this.detail?.suggestedBranch?.id) return this.detail.suggestedBranch.id;
 
-        // Pre-select what the family asked for, matched leniently: the name
-        // reached them through Website Content, typed by hand, and the two lists
-        // genuinely disagree today — the CMS carries "Natyam - Kondapur" (hyphen)
-        // where the Branch record is "Natyam – Kondapur" (en dash). Comparing
-        // those literally would offer no default at all, so dashes and spacing
-        // are normalised away before matching. It is only a default; the person
-        // still confirms.
+        const branches = this.branches || [];
+        if (branches.length === 1) return branches[0].id;
+
         const flatten = (s) => String(s || '').toLowerCase().replace(/[‐-―-]/g, '-').replace(/\s+/g, ' ').trim();
         const asked = flatten(app.preferredBranch);
-        const guess = branches.find((b) => flatten(b.name) === asked);
+        const matched = asked ? branches.find((b) => flatten(b.name) === asked)?.id : null;
 
-        const values = await formModal({
-            title: 'Which branch?',
-            description: app.preferredBranch
-                ? `The family asked for ${app.preferredBranch}. Confirm the branch this application belongs to.`
-                : 'This application arrived without a branch. Choose the one it belongs to.',
-            submitLabel: 'Begin review',
-            fields: [
-                { name: 'branchId', label: 'Branch', type: 'select', required: true,
-                  placeholder: branches.length > 1 ? 'Choose a branch' : null,
-                  value: guess?.id || (branches.length === 1 ? branches[0].id : ''),
-                  options: branches.map((b) => ({ value: b.id, label: b.name })) }
-            ],
-            values: { branchId: guess?.id || (branches.length === 1 ? branches[0].id : '') },
-            onSubmit: (v) => v
+        return matched || session.branch() || '';
+    }
+
+    /**
+     * The confirmation before an applicant becomes a student — UAT5-BUG-506.
+     *
+     * READ-ONLY BY DESIGN. This dialog exists to be checked, not filled in:
+     * every value on it was chosen on the sheet behind it, and repeating any of
+     * them as a live control is what made the old version read as a second,
+     * disagreeing branch step. So the three choices are restated as facts, and
+     * the negative button says what it does — Edit returns to the sheet with
+     * the selections intact, because nothing has been written yet.
+     *
+     * Batch and fee plan join the branch even though only the branch was
+     * reported: "Edit" promises the Owner can change any of the three, and a
+     * dialog that shows one of them cannot honour that promise.
+     *
+     * @returns {Promise<boolean>} true to go ahead, false to go back and edit.
+     */
+    confirmEnrolment(app, { branchId, batchId, feePlanId }) {
+        const nameOf = (list, id, fallback) =>
+            (list || []).find((row) => row.id === id)?.name || fallback;
+
+        const branchName = app.branchId
+            ? nameOf(this.branches, app.branchId, 'This application’s branch')
+            : nameOf(this.branches, branchId, '—');
+        const batch = (this.detail?.eligibleBatches || []).find((row) => row.id === batchId);
+        const plan = (this.feePlans || []).find((row) => row.id === feePlanId);
+
+        return confirmModal({
+            title: `Enrol ${app.name}?`,
+            // No tone: this is a summary, not a warning, and a caution-coloured
+            // panel would read as "something is wrong with these choices".
+            tone: null,
+            message: html`
+                ${app.preferredBranch ? html`
+                    <p class="m-profile-note" style="margin:0 0 12px;">
+                        The family asked for ${app.preferredBranch}. Check the branch below matches.
+                    </p>
+                ` : ''}
+                <dl class="m-facts">
+                    ${fact('Branch', branchName)}
+                    ${fact('Batch', batch?.name || '—')}
+                    ${fact('Fee plan', plan ? `${plan.name} — ${formatMoney(plan.amount)}` : '—')}
+                </dl>
+            `,
+            cancelLabel: 'Edit',
+            confirmLabel: 'Confirm'
         });
-
-        return values?.branchId || null;
     }
 
     async advance(key) {
@@ -500,9 +576,10 @@ export default class MobileAdmissionsPage extends Page {
             return;
         }
 
-        // Both required, and checked here rather than trusted to the markup:
-        // these are bare <select>s in a sheet, not a <form>, so `required` on
-        // them is a hint to the reader and nothing enforces it on submit.
+        // All three required, and checked here rather than trusted to the
+        // markup: these are bare <select>s in a sheet, not a <form>, so
+        // `required` on them is a hint to the reader and nothing enforces it on
+        // submit.
         const feePlanId = this.container.querySelector('[data-role="fee-plan"]')?.value;
         if (!feePlanId) {
             toast.error('Choose a fee plan',
@@ -511,26 +588,29 @@ export default class MobileAdmissionsPage extends Page {
         }
 
         /*
-         * The branch, for a family-submitted application that has none.
-         *
-         * This used to be asked at Begin review. With that stage gone, enrolment
-         * is the only moment a member of staff sees the application at all, so
-         * the question moves here. Asked BEFORE the busy flag so the sheet stays
-         * as it was if the person backs out — nothing is written either way.
-         *
-         * A staff-taken application already carries a real branchId and is never
-         * asked.
+         * The branch, for a family-submitted application that has none — now a
+         * field on the sheet rather than a pop-up (UAT5-BUG-506). A staff-taken
+         * application already carries a real branchId, so the field is absent
+         * and this reads null; enrolApplicant() only ever fills a gap and cannot
+         * overwrite one.
          */
-        let branchId = null;
-        if (!app.branchId) {
-            try {
-                branchId = await this.askForBranch(app);
-            } catch (err) {
-                toast.error(err.message);
-                return;
-            }
-            if (!branchId) return;          // backed out — nothing written
+        const branchId = app.branchId
+            ? null
+            : this.container.querySelector('[data-role="branch"]')?.value || null;
+        if (!app.branchId && !branchId) {
+            toast.error('Choose a branch',
+                'This application arrived from the family without one, so it has to be set before enrolling.');
+            return;
         }
+
+        /*
+         * Confirm before writing. Asked BEFORE the busy flag so the sheet stays
+         * exactly as it was when Edit is chosen — nothing has been written, and
+         * every selection is still on screen to change.
+         */
+        const go = await this.confirmEnrolment(app, { branchId, batchId, feePlanId });
+        if (!go) return;
+        if (this.disposed) return;
 
         this.busy = true;
         this.paintDetail();

@@ -79,3 +79,5 @@ export { enquiries$ } from './enquiries.repository.firestore.js';
    they first submit an application or enquiry. Not an identity and not a
    guardianship claim; see parent.service.js for why those stay separate. */
 export { parentProfiles$ } from './parentProfiles.repository.firestore.js';
+// UAT5 ENH-510 — one document per device, keyed by its FCM token.
+export { pushSubscriptions$ } from './pushSubscriptions.repository.firestore.js';

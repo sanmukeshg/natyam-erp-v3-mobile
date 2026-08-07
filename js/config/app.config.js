@@ -22,7 +22,7 @@ export const APP = Object.freeze({
     // 3.0.0, not a continuation of 2.26.5: v3 is a new application built by
     // splitting the reference project in two, with a mobile-first staff
     // experience. See CHANGELOG.md and MIGRATION_CHECKLIST.md.
-    version: '3.3.0',
+    version: '3.4.0',
     organisation: 'NATYAM — School of Kuchipudi',
     locale: 'en-IN',
     currency: 'INR',
@@ -489,6 +489,47 @@ export const EXPENSE_CATEGORIES = Object.freeze([
     'Rent', 'Salaries', 'Utilities', 'Costumes', 'Instruments', 'Musicians',
     'Travel', 'Venue hire', 'Marketing', 'Maintenance', 'Stationery', 'Other'
 ]);
+
+/**
+ * Staff roles, and which of them may take a batch — UAT5 ENH-512.
+ *
+ * `teaches` is the whole point of this table. It existed before, in
+ * staff.service.js, and nothing read it: batch assignment asked
+ * `staff$.teachers()`, which filtered on `role == 'teacher'` literally, so the
+ * flag and the behaviour said different things and only the literal one
+ * counted. staff.repository reads TEACHING_ROLES now, and this is the single
+ * place deciding who may be put in front of a class.
+ *
+ * IT LIVES HERE, NOT IN staff.service.js, because the repository needs it and
+ * cannot import that service — repositories.js re-exports `staff$` from the
+ * repository, so the arrow would close an import cycle (that file's own header
+ * calls the hazard out). staff.service.js re-exports both names, so every
+ * existing importer is unchanged.
+ *
+ * `owner` is new. An academy's owner very often teaches — that is ENH-512's
+ * whole premise — and the workaround was a second, fictional Teacher account
+ * for the same person, so attendance was marked by an identity that was not
+ * theirs. An Owner is a staff member who happens to own the school; saying so
+ * once here lets every consumer (batches, timetable, attendance, certificates,
+ * conflict detection) follow without learning anything new.
+ *
+ * PAYROLL IS UNAFFECTED, which is the thing to check before adding a role
+ * here: preparePayroll() walks activeStaff() and skips anyone with no
+ * `monthlySalary`, so an Owner who does not draw a salary through the system
+ * never appears in a pay run. One who does is presumably meant to.
+ */
+export const STAFF_ROLES = Object.freeze([
+    { value: 'teacher',  label: 'Teacher',        teaches: true },
+    { value: 'owner',    label: 'Owner',          teaches: true },
+    { value: 'musician', label: 'Musician',       teaches: false },
+    { value: 'admin',    label: 'Administration', teaches: false },
+    { value: 'support',  label: 'Support',        teaches: false }
+]);
+
+/** The roles a batch may be assigned to. Derived, never listed by hand. */
+export const TEACHING_ROLES = Object.freeze(
+    STAFF_ROLES.filter((role) => role.teaches).map((role) => role.value)
+);
 
 const PROGRAM_TYPES = Object.freeze([
     { value: 'performance', label: 'Performance' },

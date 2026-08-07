@@ -1058,6 +1058,44 @@ service cloud.firestore {
       allow delete: if isAdministrator();
     }
 
+    /*
+     * Push subscriptions — UAT5 ENH-510.
+     *
+     * One document per DEVICE, its id being that device's FCM registration
+     * token. The token is the secret: anyone holding it can push to that
+     * device, so these rules are about nobody enumerating other people's.
+     *
+     * NO LIST, FOR ANYONE. Every rule below tests `userId` against the caller,
+     * which Firestore can only evaluate per document — so a `get` of a token
+     * you already hold succeeds and a query across the collection fails. That
+     * is exactly the shape wanted: the client only ever reads back the token
+     * its own browser just produced (push.service.js's currentSubscription()),
+     * and never needs to see anyone else's.
+     *
+     * THE SENDER DOES NOT COME THROUGH HERE. A Cloud Function runs with admin
+     * credentials and bypasses rules entirely, which is what lets it do the one
+     * thing no client may: query every subscription in a category. That is the
+     * right home for that power, and the reason it is absent below rather than
+     * granted to a role.
+     *
+     * `signedIn()`, deliberately, not `isProvisionedActiveUser()`. A guardian
+     * wanting fee reminders is the most obvious use of push in the product and
+     * has no `users` document at all.
+     */
+    match /pushSubscriptions/{token} {
+      allow read: if signedIn() && resource.data.userId == myEmail();
+
+      // The document must name its own owner. Without this, anyone could file
+      // a subscription under someone else's address and receive their alerts.
+      allow create, update: if signedIn()
+        && request.resource.data.userId == myEmail();
+
+      // Turning notifications off deletes the token — see the repository's
+      // note on why a disabled flag would not be good enough.
+      allow delete: if (signedIn() && resource.data.userId == myEmail())
+        || isAdministrator();
+    }
+
     match /enquiries/{enquiryId} {
       // Every role has admission.view, and an enquiry is the stage before an
       // admission — so read matches the /admissions block above exactly.

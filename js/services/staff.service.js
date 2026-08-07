@@ -26,16 +26,21 @@
 import { bus, EVENTS } from '../core/bus.js';
 import { session } from '../core/session.js';
 import { localDate, monthKey, daysBetween, lastMonths, addDays } from '../utils/date.js';
+import { STAFF_ROLES, TEACHING_ROLES } from '../config/app.config.js';
 import { staff$, batches$, students$, salaries$, attendance$, programs$, branchIdsOf, AttendanceMath } from '../data/repositories.js';
 import { teacherSchedule } from './batches.service.js';
 import { listBranches } from './settings.service.js';
 
-export const STAFF_ROLES = Object.freeze([
-    { value: 'teacher',  label: 'Teacher',      teaches: true },
-    { value: 'musician', label: 'Musician',     teaches: false },
-    { value: 'admin',    label: 'Administration', teaches: false },
-    { value: 'support',  label: 'Support',      teaches: false }
-]);
+/*
+ * STAFF_ROLES moved to app.config.js with UAT5 ENH-512, and is re-exported
+ * here so every existing importer is unchanged.
+ *
+ * It had to move: staff.repository decides who may take a batch and therefore
+ * needs the list, and it cannot import this file — repositories.js re-exports
+ * `staff$` from that repository, so the arrow would close a cycle (its own
+ * header calls this out). app.config.js is the one module both can reach.
+ */
+export { STAFF_ROLES, TEACHING_ROLES };
 
 /* ==========================================================================
    LIFECYCLE
@@ -66,9 +71,20 @@ export async function updateStaff(id, changes) {
     const record = normalise({ ...existing, ...changes, id });
     assertShape(record);
 
-    // Demoting a teacher out of a teaching role while they still run batches
-    // would leave those batches unassignable through the normal UI.
-    if (existing.role === 'teacher' && record.role !== 'teacher') {
+    /*
+     * Moving someone out of a TEACHING role while they still run batches would
+     * leave those batches pointing at somebody the picker no longer offers.
+     *
+     * TEACHING_ROLES, not `role === 'teacher'` — UAT5 ENH-512. The literal
+     * version read teacher → owner as a demotion and refused it, which blocked
+     * the single change this enhancement exists to allow: an Owner who teaches
+     * keeps her batches, because Owner teaches too. Only a move to a role that
+     * does NOT teach is a demotion, and only that needs the batches rehomed.
+     */
+    const wasTeaching = TEACHING_ROLES.includes(existing.role);
+    const stillTeaching = TEACHING_ROLES.includes(record.role);
+
+    if (wasTeaching && !stillTeaching) {
         const owned = await batches$.byTeacher(id);
         if (owned.length) {
             throw new Error(`${existing.name} still teaches ${owned.length} batch${owned.length === 1 ? '' : 'es'}. Reassign them first.`);
@@ -99,8 +115,12 @@ export async function deactivate(id, { reason, lastDay = null, reassignTo = null
 
     if (owned.length && reassignTo) {
         const replacement = await staff$.findOrFail(reassignTo);
-        if (replacement.role !== 'teacher' || replacement.status !== 'active') {
-            throw new Error(`${replacement.name} is not an active teacher.`);
+        // TEACHING_ROLES — UAT5 ENH-512. Handing a leaving teacher's classes to
+        // the Owner is the obvious succession in a small academy, and the
+        // literal `role === 'teacher'` refused it with "is not an active
+        // teacher" about someone who very much teaches.
+        if (!TEACHING_ROLES.includes(replacement.role) || replacement.status !== 'active') {
+            throw new Error(`${replacement.name} cannot take these batches — they are not active staff who teach.`);
         }
         for (const batch of owned) {
             await batches$.update(batch.id, { teacherId: reassignTo });
@@ -249,7 +269,9 @@ export async function payrollTrend(months = 6) {
 /** Headline staff figures. */
 export async function staffSummary(branchId = null) {
     const active = await staff$.activeStaff(branchId);
-    const teachers = active.filter((s) => s.role === 'teacher');
+    // TEACHING_ROLES — UAT5 ENH-512. This drives the "Teachers" headline count;
+    // literal, it reported an Owner who teaches five batches as not a teacher.
+    const teachers = active.filter((s) => TEACHING_ROLES.includes(s.role));
     const period = monthKey();
     const salaries = await salaries$.forPeriod(period);
 

@@ -28,14 +28,31 @@ class Session {
         this.user = null;
         this.branches = [];
         this.activeBranchId = null;
+        this.staffId = null;
         this._capabilities = new Set();
         this._lastActivityAt = 0;
     }
 
     /** Called once during boot, after branches and users are loaded. */
-    hydrate({ user, branches, activeBranchId }) {
+    hydrate({ user, branches, activeBranchId, staffId = null }) {
         this.user = user;
         this.branches = branches || [];
+
+        /*
+         * The staff record this account belongs to — UAT5 ENH-512.
+         *
+         * A SECOND ID, deliberately, not a replacement for actorId(). The two
+         * answer different questions, and conflating them is exactly what broke
+         * the teacher dashboard: actorId() is "who did this", goes on every
+         * audit row, and must stay the email-keyed `users` id. staffId is
+         * "which staff record is this person" — what a batch, a timetable and a
+         * register are keyed by.
+         *
+         * Null for anyone with no staff record, normally an Administrator, and
+         * every reader must treat that as ordinary rather than an error.
+         * app.js resolves it at sign-in; nothing else sets it.
+         */
+        this.staffId = staffId;
 
         // No explicit or remembered choice, or a remembered branch that no
         // longer exists (e.g. after a restore changed the branch set), lands
@@ -86,6 +103,7 @@ class Session {
         this.user = null;
         this.branches = [];
         this.activeBranchId = null;
+        this.staffId = null;
         this._capabilities = new Set();
     }
 

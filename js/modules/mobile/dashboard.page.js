@@ -32,6 +32,7 @@ import { EVENTS } from '../../core/bus.js';
 import { formatMoneyShort, formatNumber } from '../../utils/money.js';
 import { showLoadError } from '../../ui/loadState.js';
 import { overview, forTeacher } from '../../services/dashboard.service.js';
+import { sparkline, pairedBars, donut, deltaChip } from '../../ui/charts.js';
 
 const STATE_LABEL = {
     marked: 'Marked',
@@ -101,9 +102,22 @@ export default class MobileDashboardPage extends Page {
 
         try {
             const view = this.teacherMode
-                // forTeacher() is passed the signed-in actor's id, exactly as
-                // the reference app does — behaviour preserved, not revised.
-                ? this.teacherView(await forTeacher(session.actorId()))
+                /*
+                 * session.staffId, NOT actorId() — UAT5 ENH-512.
+                 *
+                 * forTeacher() ends at batches$.byTeacher(), which matches
+                 * `batch.teacherId` — a staff document id like STF-SUREKHA.
+                 * actorId() is the `users` document id, which is an email. The
+                 * two never matched, so this screen showed a teacher zero
+                 * classes and zero pending registers on a day they were
+                 * teaching five batches. Verified against live data before
+                 * changing it: five found by staff id, none by email.
+                 *
+                 * A teacher with no staff record resolves to null and gets the
+                 * empty state, which is honest — there is nothing to link them
+                 * to a class.
+                 */
+                ? this.teacherView(await forTeacher(session.staffId))
                 // Only the two panels ownerView() renders. The workspace
                 // redesign (ENH-301) stopped showing the other eight; asking
                 // for them anyway spent half this screen's load time building
@@ -115,6 +129,9 @@ export default class MobileDashboardPage extends Page {
 
             if (this.disposed) return;
             render(this.container, html`<div data-role="body">${view}</div>`);
+
+            // Current Trends comes second, on purpose — see loadTrends().
+            if (!this.teacherMode) this.loadTrends();
         } catch (err) {
             if (this.disposed) return;
             console.error('Dashboard failed to load', err);
@@ -125,6 +142,42 @@ export default class MobileDashboardPage extends Page {
             showLoadError(this.container.querySelector('[data-role="body"]'), {
                 what: 'The dashboard', error: err, onRetry: () => this.load()
             });
+        }
+    }
+
+    /**
+     * The charts, fetched AFTER the screen is already usable — ENH-506.
+     *
+     * A second request where there was one, and it is the right trade. The
+     * `trends` panel reads every invoice and every student to draw six months
+     * of four series (see dashboard.service.js, which says so at greater
+     * length); putting it in the first `Promise.all` would have made the most
+     * opened screen in the app wait on the heaviest query it has, for pictures
+     * that are the last thing the eye reaches.
+     *
+     * So the figures and Needs attention paint immediately, the trends section
+     * shows its own skeleton, and the charts drop in when they arrive. A
+     * failure here removes one section and says so, rather than costing anyone
+     * their dashboard — the same failure-isolation rule the service applies
+     * between panels, extended across the two requests.
+     */
+    async loadTrends() {
+        const host = this.container?.querySelector('[data-role="trends"]');
+        if (!host) return;
+
+        try {
+            const { trends } = await overview({ branchId: session.branch(), panels: ['trends'] });
+            if (this.disposed) return;
+            if (panelFailed(trends)) throw new Error(trends.error);
+            render(host, this.trends(trends));
+        } catch (err) {
+            if (this.disposed) return;
+            console.error('Dashboard trends failed to load', err);
+            render(host, html`
+                <div class="m-card m-empty">
+                    The trend charts could not be built. Everything else on this screen is complete.
+                </div>
+            `);
         }
     }
 
@@ -250,6 +303,17 @@ export default class MobileDashboardPage extends Page {
     ownerView(data) {
         return html`
             ${this.todaySummary(data.headline)}
+            <!--
+                UAT5 ENH-506 — filled by loadTrends() once the heavy query
+                returns. Rendered as a placeholder rather than appended later so
+                the section keeps its place in the order: the charts must land
+                between the figures and Needs attention, not after whatever
+                happened to paint by then.
+            -->
+            <div data-role="trends">
+                <h2 class="m-section-label" style="margin-top:18px;">Current trends</h2>
+                <div class="m-card m-skeleton">Drawing six months…</div>
+            </div>
             ${this.attention(data.attention)}
             ${this.workspaceGroup('Quick actions', QUICK_ACTIONS)}
             ${this.workspaceGroup('Daily operations', DAILY_OPERATIONS)}
@@ -265,6 +329,126 @@ export default class MobileDashboardPage extends Page {
      */
     todaySummary(headline) {
         return this.kpiStrip(headline);
+    }
+
+    /* ========================================================= CURRENT TRENDS */
+
+    /**
+     * Current Trends as visual analytics — UAT5 ENH-506.
+     *
+     * WHAT THIS REPLACED: five stat cards with an icon and a number each. The
+     * figures were right and they are still here, in the strip above; what they
+     * could not do was answer "is that good?". ₹1.4L collected means nothing
+     * without last month beside it, and a rate of 78% means nothing without the
+     * five months that led to it.
+     *
+     * FIVE CHARTS, ONE SCREEN'S WORTH.
+     *   - Money in against money out, six months, paired bars — the one chart
+     *     that shows whether the school is actually ahead.
+     *   - This month's split as a donut, with the net in the middle.
+     *   - Students, attendance and collection as sparklines, three across.
+     *
+     * EVERY CHART CARRIES ITS NUMBER. A sparkline is a shape, not a value, and
+     * a dashboard that makes someone estimate a figure off a 32-pixel line has
+     * replaced information with decoration. The current value is printed beside
+     * each one and the direction is a chip, so the charts can be ignored
+     * entirely and the section still reads.
+     *
+     * WHAT DID NOT CHANGE, and was asked not to: Needs attention keeps its
+     * business logic and its alert cards, and the three workspace groups are
+     * untouched. This section sits between them.
+     */
+    trends(t) {
+        if (!t) return '';
+
+        const money = t.money || [];
+        const growth = t.growth || [];
+        const attendance = t.attendance || [];
+        const collection = t.collection || [];
+        const split = t.split || { income: 0, expense: 0, net: 0 };
+
+        return html`
+            <h2 class="m-section-label" style="margin-top:18px;">Current trends</h2>
+
+            ${money.length ? html`
+                <section class="m-card" style="padding:14px;margin-bottom:10px;">
+                    <div class="m-subhead-row" style="justify-content:space-between;">
+                        <span class="m-kpi-label">Money in and out</span>
+                        <span class="m-student-meta">Last ${money.length} months</span>
+                    </div>
+                    ${raw(pairedBars(money, {
+                        label: `Money in against money out over ${money.length} months`
+                    }))}
+                    <div class="m-chart-axis">
+                        ${money.map((m) => html`<span>${shortMonth(m.label)}</span>`)}
+                    </div>
+                    <div class="m-chart-key">
+                        <span data-tone="positive">In ${formatMoneyShort(sumOf(money, 'income'))}</span>
+                        <span data-tone="negative">Out ${formatMoneyShort(sumOf(money, 'expense'))}</span>
+                    </div>
+                </section>
+            ` : ''}
+
+            <section class="m-card m-split" style="padding:14px;margin-bottom:10px;">
+                ${raw(donut(
+                    [
+                        { value: split.income, tone: 'positive' },
+                        { value: split.expense, tone: 'negative' }
+                    ],
+                    {
+                        label: `This month: ${formatMoneyShort(split.income)} in, ${formatMoneyShort(split.expense)} out`,
+                        centre: split.income || split.expense
+                            ? `${Math.round((split.income / Math.max(1, split.income + split.expense)) * 100)}%`
+                            : ''
+                    }
+                ))}
+                <div style="flex:1;min-width:0;">
+                    <div class="m-kpi-label">This month</div>
+                    <div class="m-metrics" style="margin-top:8px;grid-template-columns:repeat(3,1fr);">
+                        ${trendMetric('In', formatMoneyShort(split.income), 'in')}
+                        ${trendMetric('Out', formatMoneyShort(split.expense), 'out')}
+                        ${trendMetric('Net', formatMoneyShort(split.net), split.net >= 0 ? 'in' : 'out')}
+                    </div>
+                </div>
+            </section>
+
+            <div class="m-trend-grid">
+                ${miniTrend({
+                    label: 'Students',
+                    series: growth,
+                    valueOf: (row) => row.total ?? 0,
+                    display: (row) => formatNumber(row.total ?? 0),
+                    // Growth is good; shrinking is not. Judged from the series
+                    // rather than from the caller so the arrow and the colour
+                    // cannot disagree.
+                    higherIsBetter: true,
+                    link: '#/students'
+                })}
+                ${miniTrend({
+                    label: 'Attendance',
+                    series: attendance,
+                    valueOf: (row) => row.rate ?? 0,
+                    display: (row) => (row.rate === null || row.rate === undefined ? '—' : `${row.rate}%`),
+                    higherIsBetter: true,
+                    link: '#/timetable'
+                })}
+                ${miniTrend({
+                    label: 'Collected',
+                    series: collection,
+                    valueOf: (row) => row.collected ?? 0,
+                    display: (row) => formatMoneyShort(row.collected ?? 0),
+                    higherIsBetter: true,
+                    link: '#/fees'
+                })}
+            </div>
+
+            ${session.can('report.view') ? html`
+                <a class="m-btn m-btn-ghost m-btn-block" href="#/analytics?series=money&months=6"
+                   style="margin-bottom:4px;">
+                    ${raw(icon('bar-chart', { size: 16 }))} All analytics
+                </a>
+            ` : ''}
+        `;
     }
 
     /**
@@ -360,6 +544,65 @@ export default class MobileDashboardPage extends Page {
 /** A panel the service failure-isolated into `{ error }` rather than data. */
 function panelFailed(panel) {
     return Boolean(panel && !Array.isArray(panel) && panel.error);
+}
+
+/* ------------------------------------------------------- CURRENT TRENDS */
+
+/**
+ * One sparkline card: the current value, its direction, and the shape behind
+ * it — ENH-506.
+ *
+ * THE DIRECTION IS THE LAST MONTH AGAINST THE ONE BEFORE, not against the start
+ * of the series. "12% up on last month" is a sentence someone can act on; "12%
+ * up on six months ago" is a fact about February.
+ *
+ * A card whose series is empty renders as an em dash rather than disappearing.
+ * A missing chart reads as "the school has no students"; an em dash reads as
+ * "no figure", which is what it means.
+ */
+function miniTrend({ label, series, valueOf, display, higherIsBetter, link }) {
+    const rows = Array.isArray(series) ? series : [];
+    const last = rows[rows.length - 1];
+    const previous = rows[rows.length - 2];
+
+    const current = last ? valueOf(last) : null;
+    const before = previous ? valueOf(previous) : null;
+
+    // No previous month, or a previous month of zero, means there is no
+    // percentage to state — a change from nothing is not "infinity per cent".
+    const percent = before ? ((current - before) / Math.abs(before)) * 100 : null;
+    const good = percent === null ? null : (percent >= 0) === Boolean(higherIsBetter);
+
+    return html`
+        <a class="m-card m-mini-trend" href="${link}">
+            <span class="m-kpi-label">${label}</span>
+            <span class="m-mini-trend-value">${last ? display(last) : '—'}</span>
+            ${raw(deltaChip(percent, { good, suffix: ' on last month' }))}
+            ${rows.length > 1 ? raw(sparkline(rows.map(valueOf), {
+                tone: good === false ? 'negative' : 'positive',
+                label: `${label} over ${rows.length} months`
+            })) : ''}
+        </a>
+    `;
+}
+
+/** A figure inside the income/expense split card. */
+function trendMetric(label, value, tone) {
+    return html`
+        <div class="m-metric" data-tone="${tone}">
+            <span class="m-metric-value">${value}</span>
+            <span class="m-metric-label">${label}</span>
+        </div>
+    `;
+}
+
+/** "Aug 2026" → "Aug". Six full labels do not fit under a 350px chart. */
+function shortMonth(label) {
+    return String(label || '').split(' ')[0];
+}
+
+function sumOf(rows, key) {
+    return (rows || []).reduce((total, row) => total + (row[key] || 0), 0);
 }
 
 function kpiValue(kpi) {

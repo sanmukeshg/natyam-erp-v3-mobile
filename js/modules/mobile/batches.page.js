@@ -85,10 +85,22 @@ export default class MobileBatchesPage extends Page {
         const term = this.search.trim().toLowerCase();
         let rows = this.rows;
 
-        // "Mine" is only meaningful for a teacher, and it matches on the staff
-        // record's own id — the same `teacherId` the timetable and register
-        // use, not a name comparison.
-        if (this.filter === 'mine') rows = rows.filter((b) => b.teacherId && b.teacherId === session.actorId());
+        /*
+         * "Mine" matches on the staff record's own id — the same `teacherId`
+         * the timetable and the register use, not a name comparison.
+         *
+         * It compared against session.actorId(), which is the `users`
+         * document id — an email — while `teacherId` is a staff code like
+         * STF-SUREKHA. So the filter matched nothing, for anyone, ever, and
+         * read as "you teach no batches". session.staffId is the resolved
+         * staff record (UAT5 ENH-512); the guard also stops a null staffId
+         * from matching a batch with no teacher.
+         */
+        if (this.filter === 'mine') {
+            rows = session.staffId
+                ? rows.filter((b) => b.teacherId === session.staffId)
+                : [];
+        }
         else if (this.filter === 'full') rows = rows.filter((b) => b.capacity && b.seatsLeft === 0);
         else if (this.filter === 'weak') rows = rows.filter((b) => b.attendanceRate !== null && b.attendanceRate < 70);
 
@@ -277,13 +289,27 @@ export default class MobileBatchesPage extends Page {
             { name: 'levels', label: 'Levels', type: 'checks', required: true, itemNoun: 'level',
               options: curriculum().map((l) => ({ value: l.value, label: l.label })),
               help: 'Students at any of these levels can be placed here.' },
-            { name: 'teacherId', label: 'Teacher', type: 'select', placeholder: 'Not assigned yet',
+            /*
+             * "Taken by", not "Teacher" — UAT5 ENH-512.
+             *
+             * The list now holds every staff role whose `teaches` flag is set,
+             * which is Teacher and Owner. The field still writes `teacherId`
+             * and still points at a staff record, so batches, registers,
+             * timetables and conflict detection are untouched; only who may
+             * appear in it has widened. Renaming the label is the honest half
+             * of that — a list containing the Owner under a heading that says
+             * "Teacher" invites the very duplicate account this removes.
+             */
+            { name: 'teacherId', label: 'Taken by', type: 'select', placeholder: 'Not assigned yet',
               options: teachers.map((t) => ({
                   value: t.id,
-                  label: t.available
-                      ? `${t.name} — ${t.load} batch${t.load === 1 ? '' : 'es'}`
-                      : `${t.name} — busy (${t.clashWith})`
-              })) },
+                  label: `${t.name}${t.role === 'owner' ? ' (Owner)' : ''} — ${
+                      t.available
+                          ? `${t.load} batch${t.load === 1 ? '' : 'es'}`
+                          : `busy (${t.clashWith})`
+                  }`
+              })),
+              help: 'Teachers and Owners who teach. An Owner needs no second Teacher account.' },
             { name: 'days', label: 'Days', type: 'checks', required: true, itemNoun: 'day',
               options: WEEK.map((d) => ({ value: d, label: d })),
               help: 'The register only exists on these days.' },

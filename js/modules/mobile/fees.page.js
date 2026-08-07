@@ -37,7 +37,7 @@ import { formatDate, formatDateLong, localDate, startOfMonth } from '../../utils
 import { PAYMENT_MODES, PAYMENT_STATUS, CAPABILITIES } from '../../config/app.config.js';
 import { listStudents } from '../../services/students.service.js';
 import {
-    collectionSummary, studentFeeSummary, recordPayment, waiveInvoice, refundPayment
+    collectionSummary, studentFeeSummary, recordPayment, waiveInvoice, reverseWaiver, refundPayment
 } from '../../services/fees.service.js';
 import { formModal } from '../../ui/form.js';
 import { filterBar, renderFilterPanel, bindFilterToggle } from '../../ui/filterBar.js';
@@ -108,6 +108,42 @@ export default class MobileFeesPage extends Page {
 
         if (!done) return;
         toast.success('Invoice waived', invoice.number);
+        await this.load();
+    }
+
+    /**
+     * Undoing a waiver — UAT5 ENH-507.
+     *
+     * The reason is OPTIONAL here, unlike the waiver itself, and that
+     * asymmetry is the business rule rather than an oversight: writing money
+     * off needs justifying, while a family turning up to pay after all does
+     * not. The audit row still records who and when regardless.
+     *
+     * The dialog spells out both halves of what happens, because "reverse" on
+     * its own does not say whether the family now owes the money again — and
+     * that is the only part they will be asked about.
+     */
+    async reverseWaiverFor(invoiceId) {
+        const invoice = (this.detail?.fees?.invoices || []).find((i) => i.id === invoiceId);
+        if (!invoice) return;
+
+        const amount = invoice.waivedAmount || invoice.amount || 0;
+
+        const done = await formModal({
+            title: `Reverse the waiver on ${invoice.number}?`,
+            description: `${formatMoney(amount)} becomes payable again, and the Money Out the waiver `
+                + 'recorded is cancelled by a matching entry. Both stay in the books.',
+            submitLabel: 'Reverse waiver',
+            fields: [
+                { name: 'reason', label: 'Reason', type: 'textarea', rows: 2,
+                  help: 'Optional. Kept in the audit log with your name and the date.' }
+            ],
+            values: { reason: '' },
+            onSubmit: (v) => reverseWaiver(invoice.id, { reason: v.reason })
+        });
+
+        if (!done) return;
+        toast.success('Waiver reversed', `${formatMoney(amount)} is payable again.`);
         await this.load();
     }
 
@@ -336,6 +372,19 @@ export default class MobileFeesPage extends Page {
             .filter((i) => i.status !== 'cancelled' && i.balance > 0)
             .sort((a, b) => (a.dueDate || '').localeCompare(b.dueDate || ''));
 
+        /*
+         * Waived invoices, listed separately — UAT5 ENH-507.
+         *
+         * They cannot join `open`: a waiver zeroes the balance, which is the
+         * filter above, so a written-off fee vanished from this sheet entirely
+         * and there was no row to offer a reversal on. That is also why the
+         * bug existed at all — nothing on any screen could see a waiver after
+         * it was taken.
+         */
+        const waived = (fees.invoices || [])
+            .filter((i) => i.status === 'waived')
+            .sort((a, b) => (b.waivedOn || '').localeCompare(a.waivedOn || ''));
+
         render(host, html`
             <div class="m-sheet-scrim" data-action="close-detail"></div>
             <div class="m-profile" role="dialog" aria-modal="true" aria-label="${student?.name || 'Fees'}">
@@ -402,6 +451,38 @@ export default class MobileFeesPage extends Page {
                                 </div>
                             `;
                         })}
+                    ` : ''}
+
+                    <!--
+                      UAT5 ENH-507 — written-off fees, and the way back.
+
+                      Shown to anyone who can read the sheet, because a waiver
+                      is part of the family's fee history and hiding it made the
+                      money simply disappear. Only fee.waive gets the button:
+                      the same capability that took the waiver undoes it, which
+                      is what reverseWaiver() itself enforces.
+                    -->
+                    ${waived.length ? html`
+                        <p class="m-section-label" style="margin:6px 0 0;color:var(--v3-muted);text-shadow:none;">Waived</p>
+                        ${waived.map((invoice) => html`
+                            <div class="m-invoice">
+                                <div class="m-invoice-main">
+                                    <div class="m-invoice-no">${invoice.number || 'Invoice'}</div>
+                                    <div class="m-invoice-due">
+                                        ${invoice.waivedOn ? `Waived ${formatDate(invoice.waivedOn)}` : 'Waived'}${
+                                            invoice.waiverReason ? ` · ${invoice.waiverReason}` : ''
+                                        }
+                                    </div>
+                                </div>
+                                <div class="m-invoice-right">
+                                    <span class="m-badge">${formatMoney(invoice.waivedAmount || invoice.amount || 0)}</span>
+                                    ${session.can('fee.waive') ? html`
+                                        <button class="m-btn m-btn-sm m-btn-ghost"
+                                                data-action="reverse-waiver" data-id="${invoice.id}">Reverse</button>
+                                    ` : ''}
+                                </div>
+                            </div>
+                        `)}
                     ` : ''}
 
                     ${fees.receipts?.length ? html`
@@ -614,6 +695,7 @@ export default class MobileFeesPage extends Page {
         this.onDispose(on(root, 'click', '.m-profile', (event) => event.stopPropagation()));
 
         this.onDispose(on(root, 'click', '[data-action="waive"]', (_e, t) => this.waive(t.dataset.id)));
+        this.onDispose(on(root, 'click', '[data-action="reverse-waiver"]', (_e, t) => this.reverseWaiverFor(t.dataset.id)));
 
         // The ⋮ menu is one-at-a-time: opening a second closes the first, and
         // tapping the same one again closes it. Repainting the sheet is what

@@ -123,6 +123,12 @@ export const EVENTS = Object.freeze({
     CERTIFICATE_REVOKED:'certificate:revoked',
 
     INVOICE_CREATED:    'fee:invoice-created',
+    // UAT5 ENH-507. An invoice that changed without money moving — today only a
+    // reversed waiver, which puts a balance back and needs the fee screens to
+    // repaint. PAYMENT_RECORDED would have been a lie and INVOICE_CREATED
+    // doubly so; anything listening to either would have reloaded for a reason
+    // that never happened.
+    INVOICE_UPDATED:    'fee:invoice-updated',
     PAYMENT_RECORDED:   'fee:paid',
     PAYMENT_REFUNDED:   'fee:refunded',
 

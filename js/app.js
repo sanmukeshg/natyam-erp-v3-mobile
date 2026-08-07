@@ -44,7 +44,7 @@ import { hasParentProfile } from './services/parent.service.js';
 import { initPWA, shouldOffer } from './services/pwaInstall.service.js';
 import { toast } from './ui/toast.js';
 import { watchAuthState } from './core/firebase.js';
-import { branches$ } from './data/repositories.js';
+import { branches$, staff$ } from './data/repositories.js';
 import { renderLogin } from './modules/auth/login.page.js';
 import { pendingPage } from './modules/system/pending.page.js';
 import { resolveProvisionedUser, expireSession, acknowledgeRemoteSignOut } from './services/auth.service.js';
@@ -381,6 +381,19 @@ function enterStaffApp() {
     document.querySelector('#boot')?.remove();
     bus.emit(EVENTS.APP_READY);
 
+    /*
+     * Re-attach the push listener for a device already enabled — UAT5 ENH-510.
+     *
+     * AFTER the app is on screen, and unawaited. A foreground push handler is
+     * worth having and worth nothing at boot time, so it must not sit in front
+     * of the first paint; the dynamic import inside it also means the Messaging
+     * SDK is fetched only on a device that has actually turned push on.
+     * resumePush() returns immediately for everyone else.
+     */
+    import('./services/push.service.js')
+        .then(({ resumePush }) => resumePush())
+        .catch((err) => console.error('Push could not resume', err));
+
     bus.on(EVENTS.PREFS_CHANGED, ({ key, value }) => {
         if (key === 'theme') applyTheme(value);
         if (key === 'density') applyDensity(value);
@@ -504,7 +517,30 @@ async function hydrateSession(user) {
             : `Could not load your branches — ${String(err.message || 'unexpected error').replace(/\.\s*$/, '')}. Reload to try again.`);
     }
 
-    session.hydrate({ user, branches, activeBranchId: null });
+    /*
+     * The staff record behind this account — UAT5 ENH-512.
+     *
+     * Resolved HERE, once, for the same reason every other identity question
+     * is: one place decides, everything downstream just reads. `users` are
+     * keyed by email and `staff` by a business code (STF-SUREKHA), and a batch
+     * stores the staff code — so nothing holding only session.actorId() could
+     * ever find the batches a person teaches. Not hypothetical: on this
+     * school's live data the mobile teacher dashboard asked
+     * byTeacher('…@gmail.com') and got zero of five batches back, so a teacher
+     * signing in saw no classes and no pending registers at all.
+     *
+     * Failure is swallowed on purpose. An Administrator has no staff record and
+     * never will, which is normal; and a lookup that fails should cost someone
+     * their class list, not their sign-in.
+     */
+    let staffId = null;
+    try {
+        staffId = (await staff$.byUserEmail(user?.id))?.id || null;
+    } catch (err) {
+        console.error('Could not resolve the staff record for this account', err);
+    }
+
+    session.hydrate({ user, branches, activeBranchId: null, staffId });
 }
 
 window.addEventListener('unhandledrejection', (event) => {

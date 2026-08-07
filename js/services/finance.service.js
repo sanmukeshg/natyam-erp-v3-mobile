@@ -615,6 +615,216 @@ export async function ledgerView({ from, to, branchId = null, type = null, accou
     };
 }
 
+/* ==========================================================================
+   THE CASHBOOK  (UAT5 ENH-504 / ENH-508)
+   --------------------------------------------------------------------------
+   One vocabulary, for the owner rather than for an accountant:
+
+       Money In  = every income entry.
+       Money Out = every expense entry, PAYROLL INCLUDED.
+       Net       = Money In − Money Out.
+
+   Nothing below is a new source of truth. Every figure still comes from the
+   ledger, which is why these totals reconcile with profitAndLoss() to the
+   rupee — and why the same reversal filter is applied here as there. The
+   double entry, the audit log and the ledger view are all untouched; they are
+   simply no longer the first thing the screen shows.
+   ========================================================================== */
+
+/**
+ * Why an entry exists, and whether the cashbook may change it.
+ *
+ * The rule is the one updateEntry()/deleteEntry() already enforce, surfaced so
+ * the UI can say it before someone taps rather than after: an entry with a
+ * sourceType is the shadow of another record and has to be corrected from that
+ * record, or the ledger silently stops describing it. Only two kinds are the
+ * cashbook's own — a hand-typed entry, and an expense, whose updateExpense()
+ * rewrites both rows in one transaction.
+ */
+const LOCKED_SOURCES = Object.freeze({
+    payment:  'This is a fee payment. Correct it from the student’s invoice.',
+    refund:   'This is a fee refund. Correct it from the student’s invoice.',
+    waiver:   'This is a fee waiver. Correct it from the student’s invoice.',
+    salary:   'This is a salary payment. Correct it from Payroll.',
+    program:  'This was posted by a programme. Correct it from that programme.',
+    reversal: 'This is a reversal. It exists to cancel another entry and cannot be edited.'
+});
+
+/**
+ * The transaction list — Money In and Money Out in one stream.
+ *
+ * FILTERED LIKE THE P&L, NOT LIKE THE LEDGER, and the difference is
+ * deliberate. A reversed entry and its contra cancel; showing both here would
+ * list two transactions that between them moved nothing and make the list
+ * disagree with the Net figure above it. ledgerView() stays unfiltered because
+ * that IS the audit trail — see the note at the top of this file. This is the
+ * cashbook, and a cashbook adds up.
+ */
+export async function transactions({ from, to, branchId = null, type = null } = {}) {
+    session.require('finance.view', 'view transactions');
+
+    const entries = (await ledger$.between(from, to, branchId))
+        .filter((e) => !e.reversedBy && e.sourceType !== 'reversal')
+        .filter((e) => !type || e.type === type);
+
+    const rows = entries
+        .sort((a, b) => b.date.localeCompare(a.date) || (b.createdAt || '').localeCompare(a.createdAt || ''))
+        .map((entry) => ({
+            id: entry.id,
+            date: entry.date,
+            period: entry.period,
+            // "Category" to the owner is the ledger's account — the two are the
+            // same list, named for two different readers.
+            category: entry.account,
+            description: entry.narration,
+            amount: entry.amount,
+            type: entry.type,
+            branchId: entry.branchId,
+            source: entry.sourceType || 'manual',
+            expenseId: entry.sourceType === 'expense' ? entry.sourceId : null,
+            editable: !entry.sourceType || entry.sourceType === 'expense',
+            lockedReason: LOCKED_SOURCES[entry.sourceType] || null
+        }));
+
+    return { rows, ...LedgerMath.summarise(entries) };
+}
+
+/**
+ * The one write the cashbook offers: Money In or Money Out, in four fields.
+ *
+ * MONEY OUT GOES THROUGH recordExpense(), not straight to the ledger. An
+ * expense category is also an expense RECORD — it carries who was paid, how,
+ * and against what reference, and the Expenses report is built from that
+ * collection. Posting the ledger side alone would leave the report short by
+ * every transaction typed here, which is the same class of gap that hid
+ * Payroll from "Where it went" in the first place.
+ *
+ * Money In has no such twin — income reaches the ledger from fee collection or
+ * from a hand-typed entry, and this is the hand-typed path.
+ */
+export async function recordTransaction({ type, category, amount, description, date = null, branchId = null, paidTo = null }) {
+    session.require('finance.edit', 'record a transaction');
+
+    if (!['income', 'expense'].includes(type)) throw new Error('A transaction is either money in or money out.');
+    if (!category) throw new Error('Choose a category.');
+
+    if (type === 'expense' && expenseCategories().includes(category)) {
+        return recordExpense({ category, amount, description, date, branchId, paidTo });
+    }
+
+    return postEntry({
+        type,
+        account: category,
+        amount,
+        narration: description,
+        date,
+        branchId
+    });
+}
+
+/**
+ * Edits a transaction, routed to whichever record actually owns it.
+ *
+ * `row` is a row from transactions() — it already knows which of the two paths
+ * applies, so the caller does not have to re-derive it from a sourceType.
+ */
+export async function updateTransaction(row, changes) {
+    session.require('finance.edit', 'edit a transaction');
+    if (!row?.editable) throw new Error(row?.lockedReason || 'This transaction cannot be edited here.');
+
+    if (row.expenseId) {
+        return updateExpense(row.expenseId, {
+            category: changes.category ?? row.category,
+            amount: changes.amount,
+            description: changes.description,
+            date: changes.date,
+            paidTo: changes.paidTo
+        });
+    }
+
+    return updateEntry(row.id, {
+        account: changes.category ?? row.category,
+        amount: changes.amount,
+        narration: changes.description,
+        date: changes.date
+    });
+}
+
+/** Deletes a transaction, routed the same way. A reason is always required. */
+export async function deleteTransaction(row, { reason }) {
+    session.require('finance.edit', 'delete a transaction');
+    if (!row?.editable) throw new Error(row?.lockedReason || 'This transaction cannot be deleted here.');
+    if (!reason?.trim()) throw new Error('Say why this transaction is being deleted.');
+
+    if (row.expenseId) return removeExpense(row.expenseId, { reason });
+    return deleteEntry(row.id, { reason });
+}
+
+/**
+ * Where the money went — every rupee of it, Payroll included.
+ *
+ * UAT5-ENH-504 Part 3. The screen used to build this from expenseBreakdown()
+ * below, which reads the `expenses` collection. Payroll does not write there:
+ * paySalaries() posts straight to the ledger as "Salaries". Neither does a
+ * hand-typed expense entry, or a programme's costs. So the breakdown could
+ * disagree with the Money Out figure printed directly above it by the entire
+ * wage bill — the single largest line the school has — and the page carried a
+ * footnote apologising for it.
+ *
+ * Reading the ledger instead makes the two reconcile by construction: this is
+ * the same set of entries profitAndLoss() sums into totalExpense, grouped by
+ * account rather than added up.
+ *
+ * expenseBreakdown() is deliberately left alone. The Expenses report lists
+ * expense RECORDS beside its total, and a total that counted salaries while
+ * the rows below it could not show them would be the same bug pointed the
+ * other way.
+ */
+export async function moneyOutBreakdown({ from, to, branchId = null }) {
+    const entries = (await ledger$.between(from, to, branchId))
+        .filter((e) => !e.reversedBy && e.sourceType !== 'reversal');
+
+    const byAccount = LedgerMath.byAccount(entries, 'expense');
+    const total = byAccount.reduce((sum, row) => sum + row.amount, 0);
+
+    return {
+        total,
+        count: entries.filter((e) => e.type === 'expense').length,
+        categories: byAccount.map((row) => ({
+            category: row.account,
+            amount: row.amount,
+            share: total ? Math.round((row.amount / total) * 100) : 0
+        }))
+    };
+}
+
+/**
+ * Where the money came from — the income half of moneyOutBreakdown().
+ *
+ * Added for UAT5 ENH-505's "Income by category" chart. Deliberately the same
+ * shape and the same filter as its sibling, so the two pies are built from one
+ * idea rather than two: Tuition fees, Registration fees, Donations and the rest
+ * are ledger accounts, and reading them here means the slices add up to the
+ * Money In figure printed beside them.
+ */
+export async function moneyInBreakdown({ from, to, branchId = null }) {
+    const entries = (await ledger$.between(from, to, branchId))
+        .filter((e) => !e.reversedBy && e.sourceType !== 'reversal');
+
+    const byAccount = LedgerMath.byAccount(entries, 'income');
+    const total = byAccount.reduce((sum, row) => sum + row.amount, 0);
+
+    return {
+        total,
+        count: entries.filter((e) => e.type === 'income').length,
+        categories: byAccount.map((row) => ({
+            category: row.account,
+            amount: row.amount,
+            share: total ? Math.round((row.amount / total) * 100) : 0
+        }))
+    };
+}
+
 /** Expenditure broken down by category, for the donut on the finance page. */
 export async function expenseBreakdown({ from, to, branchId = null }) {
     const rows = await expenses$.between(from, to, branchId);

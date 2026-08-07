@@ -28,7 +28,11 @@ import { session } from '../../core/session.js';
 import { EVENTS } from '../../core/bus.js';
 import { formatMoney, formatMoneyShort, formatNumber } from '../../utils/money.js';
 import { formatDateLong } from '../../utils/date.js';
-import { listStaff, staffSummary, teacherDashboard } from '../../services/staff.service.js';
+// TEACHING_ROLES rather than a literal `role === 'teacher'` — UAT5 ENH-512.
+// Every check on this page asks "does this person take classes?", which is now
+// true of an Owner too; left literal, an Owner running five batches would show
+// no batch chip and be missing from the Teachers filter.
+import { listStaff, staffSummary, teacherDashboard, TEACHING_ROLES } from '../../services/staff.service.js';
 import { showLoadError } from '../../ui/loadState.js';
 
 const FILTERS = [
@@ -77,8 +81,8 @@ export default class MobileStaffPage extends Page {
 
     visibleRows() {
         let rows = this.rows.filter((s) => {
-            if (this.filter === 'teacher') return s.role === 'teacher';
-            if (this.filter === 'unassigned') return s.role === 'teacher' && s.batchCount === 0;
+            if (this.filter === 'teacher') return TEACHING_ROLES.includes(s.role);
+            if (this.filter === 'unassigned') return TEACHING_ROLES.includes(s.role) && s.batchCount === 0;
             return true;
         });
 
@@ -122,13 +126,13 @@ export default class MobileStaffPage extends Page {
                                 <span class="m-student-name">${m.name}</span>
                                 <span class="m-student-meta">
                                     ${m.roleLabel}${m.specialisation ? ` · ${m.specialisation}` : ''}
-                                    ${m.role === 'teacher'
+                                    ${TEACHING_ROLES.includes(m.role)
                                         ? ` · ${m.batchCount} batch${m.batchCount === 1 ? '' : 'es'}, `
                                           + `${formatNumber(m.studentCount)} student${m.studentCount === 1 ? '' : 's'}`
                                         : ''}
                                 </span>
                             </span>
-                            ${m.role === 'teacher' && !m.batchCount ? html`
+                            ${TEACHING_ROLES.includes(m.role) && !m.batchCount ? html`
                                 <span class="m-badge" data-fee="overdue">Free</span>
                             ` : html`
                                 <span class="m-badge" data-fee="clear">${m.weeklySessions || 0}/wk</span>
@@ -233,7 +237,7 @@ export default class MobileStaffPage extends Page {
                         </div>
                     ` : html`
                         <p class="m-subhead-note" style="margin-top:12px;">
-                            ${m.role === 'teacher'
+                            ${TEACHING_ROLES.includes(m.role)
                                 ? 'Not teaching any batch right now.'
                                 : 'This role does not take batches.'}
                         </p>

@@ -159,6 +159,41 @@ export class MobileShell {
         `);
 
         this.markActive();
+        this.measureTabBar();
+    }
+
+    /**
+     * Publishes the tab bar's footprint as `--v3-tabbar-space` — UAT5-BUG-505.
+     *
+     * Dialogs are centred in a fixed, full-viewport scrim, so nothing about
+     * their geometry knows this bar exists. Its bottom padding used to clear
+     * only the safe-area inset, which is roughly half of what the bar actually
+     * occupies, and a tall dialog's footer ended up in the same 50 pixels as
+     * the bar — the Cancel/Enrol row on the Admissions sheet, reported on
+     * iPhone.
+     *
+     * MEASURED, NOT DERIVED. The obvious alternative is a constant built from
+     * the bar's own padding, border and tap height, and that constant is wrong
+     * the first time a tab label wraps, an icon grows, or the font scales for
+     * accessibility — silently, and only on the devices where it matters. One
+     * rect read after each paint is cheaper than that class of bug.
+     *
+     * Written on the shell rather than the document so the Parent Portal,
+     * applicant and public shells — which share these dialog styles and have no
+     * tab bar — keep the safe-area floor the token defaults to.
+     */
+    measureTabBar() {
+        const bar = this.nodes?.tabs;
+        const shell = bar?.closest('.m-shell');
+        if (!bar || !shell) return;
+
+        const top = bar.getBoundingClientRect().top;
+        const space = Math.max(0, Math.round(window.innerHeight - top));
+
+        // A bar that has not been laid out yet measures as the whole viewport.
+        // Leave the token alone rather than reserve the entire screen.
+        if (!space || space > window.innerHeight / 2) return;
+        shell.style.setProperty('--v3-tabbar-space', `${space}px`);
     }
 
     /**
@@ -253,6 +288,15 @@ export class MobileShell {
     /* --------------------------------------------------------------- EVENTS */
 
     bind() {
+        /*
+         * UAT5-BUG-505 — the bar's footprint changes without the bar being
+         * repainted: rotating the phone changes the safe-area inset, and iOS
+         * changes `innerHeight` when the address bar collapses. Both move the
+         * strip a dialog has to stay out of, so both re-measure.
+         */
+        window.addEventListener('resize', () => this.measureTabBar());
+        window.addEventListener('orientationchange', () => this.measureTabBar());
+
         on(this.root, 'click', '[data-action="more"]', () => this.toggleSheet());
         on(this.root, 'click', '[data-action="close-sheet"]', () => this.toggleSheet(false));
 

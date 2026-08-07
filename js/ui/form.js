@@ -531,9 +531,18 @@ function escapeAttr(value) {
 
 /**
  * A yes/no confirm in the same language as the form.
+ *
+ * `cancelLabel` and `tone: null` exist for UAT5-BUG-506, where the dialog is a
+ * CONFIRMATION rather than a warning: it restates choices already made and its
+ * negative button goes back to change them ("Edit"), so "Cancel" would be a
+ * lie and a caution-toned notice would colour a plain summary as a problem.
+ * Both keep their old defaults, so every existing call is unchanged.
+ *
  * @returns {Promise<boolean>}
  */
-export function confirmModal({ title, message, confirmLabel = 'Confirm', tone = 'caution' }) {
+export function confirmModal({
+    title, message, confirmLabel = 'Confirm', cancelLabel = 'Cancel', tone = 'caution'
+}) {
     return new Promise((resolve) => {
         const host = document.createElement('div');
         host.className = 'm-form-host';
@@ -562,10 +571,10 @@ export function confirmModal({ title, message, confirmLabel = 'Confirm', tone = 
                         <h2 class="m-modal-title">${title}</h2>
                     </div>
                     <div class="m-modal-body">
-                        <div class="m-notice" data-tone="${tone}">${message}</div>
+                        ${tone ? html`<div class="m-notice" data-tone="${tone}">${message}</div>` : message}
                     </div>
                     <div class="m-modal-foot">
-                        <button class="m-form-cancel" data-action="no">Cancel</button>
+                        <button class="m-form-cancel" data-action="no">${cancelLabel}</button>
                         <button class="m-form-save" data-action="yes">${confirmLabel}</button>
                     </div>
                 </div>

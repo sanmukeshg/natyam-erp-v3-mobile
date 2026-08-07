@@ -70,6 +70,22 @@
     /* Safe areas, resolved once. */
     --v3-safe-top:    env(safe-area-inset-top, 0px);
     --v3-safe-bottom: env(safe-area-inset-bottom, 0px);
+
+    /*
+     * UAT5-BUG-505 — the strip along the bottom of the viewport that the
+     * floating tab bar occupies: its own height plus the margin lifting it
+     * clear of the home indicator.
+     *
+     * The safe-area inset is the FLOOR, and it is what this resolves to
+     * everywhere the bar does not exist: the Parent Portal, the applicant flow
+     * and the public site all share these dialog styles and have no tab bar.
+     * MobileShell measures the real bar after every paint and overwrites this
+     * on the shell element — measured rather than derived from the tab
+     * metrics, because a constant here is a constant that goes stale the next
+     * time an icon or a label changes size, which is exactly how this bug
+     * arrived.
+     */
+    --v3-tabbar-space: var(--v3-safe-bottom);
 }
 
 /* ---------------------------------------------------------------- DARK ---- */
@@ -1148,10 +1164,25 @@ a.m-attn:hover { text-decoration: none; }
 
 .m-form-host { position: relative; z-index: var(--z-modal); }
 
+/*
+ * UAT5-BUG-505 — the bottom padding clears the TAB BAR, not just the inset.
+ *
+ * It was `safe-bottom + 16px`, which on an iPhone 13 leaves a content box of
+ * about 86.6vh — narrower than the 88vh cap `.m-modal` sets below. A flex item
+ * larger than its container overflows it equally at both ends, so every tall
+ * dialog pushed its own footer down into the strip the tab bar occupies. The
+ * Cancel/Enrol row on the Admissions sheet landed there exactly.
+ *
+ * The z-order is not the problem and was not touched: `.m-tabbar` was pinned to
+ * --z-sticky under --z-modal in UAT4-BUG-003 and that still holds. This is
+ * geometry — two elements asking for the same 50 pixels — and the fix is to
+ * stop the dialog from reaching them, which also keeps the bar readable behind
+ * the scrim instead of half-covered by an opaque box.
+ */
 .m-modal-scrim {
     position: fixed; inset: 0; z-index: var(--z-modal);
     display: flex; align-items: center; justify-content: center;
-    padding: calc(var(--v3-safe-top) + 16px) 14px calc(var(--v3-safe-bottom) + 16px);
+    padding: calc(var(--v3-safe-top) + 16px) 14px calc(var(--v3-tabbar-space) + 16px);
     background: rgba(20, 11, 6, 0.55);
     backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
 }
@@ -1168,10 +1199,17 @@ a.m-attn:hover { text-decoration: none; }
  * Cancel/Save pair on screen and always leaves dimmed background visible
  * around the corners, so a two-field dialog and a twenty-field one are
  * recognisably the same component.
+ *
+ * `min(88vh, 100%)` rather than `88vh` — UAT5-BUG-505. 100% is the scrim's own
+ * padded content box, so the dialog can never grow past the padding that keeps
+ * it off the tab bar; 88vh still applies on a tall screen where the box is the
+ * larger of the two, which is where ENH-612's "always show some backdrop" rule
+ * has to come from. A bare 88vh could exceed the box and overflow it at both
+ * ends, which is what put the footer under the bar.
  */
 .m-modal {
     display: flex; flex-direction: column;
-    width: 100%; max-width: 560px; max-height: 88vh;
+    width: 100%; max-width: 560px; max-height: min(88vh, 100%);
     overflow: hidden;
     background: var(--v3-card-bg);
     backdrop-filter: blur(12px) saturate(136%); -webkit-backdrop-filter: blur(12px) saturate(136%);
@@ -1557,3 +1595,172 @@ body {
     gap: 8px;
 }
 .m-actions-grid .m-quick { padding: 12px; }
+
+/* ==========================================================================
+   CURRENT TRENDS  (js/ui/charts.js — UAT5 ENH-506)
+   --------------------------------------------------------------------------
+   The owner dashboard's visual analytics. Everything here sizes a chart or
+   labels one; no colour is decided in this block that is not already a v3
+   token, because the SVGs reference those tokens directly and a second palette
+   here would drift from them at the first theme change.
+   ========================================================================== */
+
+/* Stretched by preserveAspectRatio="none" — the charts are drawn in a fixed
+   user space and sized entirely from here, so a chart never has to be told its
+   pixel dimensions by the JavaScript that builds it. */
+.m-spark { display: block; width: 100%; height: 30px; margin-top: 8px; }
+.m-chart { display: block; width: 100%; height: 84px; margin: 10px 0 4px; }
+.m-donut { width: 74px; height: 74px; flex-shrink: 0; }
+
+/* The month labels under the paired-bar chart. One column per bar group, on
+   the same grid the SVG divides itself into, so a label sits under its bars at
+   any width rather than being positioned by guesswork. */
+.m-chart-axis {
+    display: grid; grid-auto-flow: column; grid-auto-columns: 1fr;
+    font-size: 10px; color: var(--v3-muted); text-align: center;
+}
+
+.m-chart-key {
+    display: flex; gap: 14px; margin-top: 8px;
+    font-size: 11.5px; font-weight: var(--weight-semibold);
+}
+/* The swatch is the legend — the words alone cannot say which bar is which. */
+.m-chart-key > span { display: inline-flex; align-items: center; gap: 5px; color: var(--v3-muted); }
+.m-chart-key > span::before {
+    content: ''; width: 8px; height: 8px; border-radius: 2px; background: var(--v3-tone-neutral);
+}
+.m-chart-key > span[data-tone="positive"]::before { background: var(--v3-positive); }
+.m-chart-key > span[data-tone="negative"]::before { background: var(--v3-negative); }
+
+/* Donut beside its figures rather than above them: a 74px circle leaves room
+   for three metrics on a 375px screen, and stacking them would push Needs
+   attention — the actionable half of this dashboard — off the first screen,
+   which is the clutter ENH-301 removed and this section must not reintroduce. */
+.m-split { display: flex; align-items: center; gap: 14px; }
+
+/*
+ * Three sparkline cards across, always.
+ *
+ * `minmax(0, 1fr)` rather than `1fr`: a grid track's default minimum is its
+ * content, and an SVG at width:100% would otherwise refuse to shrink below its
+ * intrinsic size and overflow the row on a narrow phone.
+ */
+.m-trend-grid {
+    display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px; margin-bottom: 12px;
+}
+.m-mini-trend {
+    display: flex; flex-direction: column; gap: 2px;
+    padding: 11px 10px; min-width: 0;
+}
+.m-mini-trend:hover { text-decoration: none; }
+.m-mini-trend .m-kpi-label { font-size: 10px; }
+.m-mini-trend-value {
+    font-size: 16px; font-weight: var(--weight-bold); color: var(--v3-name);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+.m-delta {
+    font-size: 10px; font-weight: var(--weight-semibold);
+    color: var(--v3-delta-neutral); white-space: nowrap;
+}
+.m-delta[data-tone="positive"] { color: var(--v3-delta-positive); }
+.m-delta[data-tone="negative"] { color: var(--v3-delta-negative); }
+
+/* On a wider phone the section follows the same 620px reading measure the rest
+   of .m-content keeps, so the charts do not stretch into a landscape band. */
+@media (min-width: 600px) {
+    .m-trend-grid { max-width: 620px; margin-left: auto; margin-right: auto; }
+}
+
+/* ==========================================================================
+   ANALYTICS  (UAT5 ENH-505)
+   --------------------------------------------------------------------------
+   Executive KPI cards and the batch meters. The charts themselves reuse the
+   Current Trends primitives above — .m-donut, .m-chart, .m-chart-axis and
+   .m-chart-key are shared, so a donut on Analytics and a donut on the
+   dashboard are the same object rather than two that drift.
+   ========================================================================== */
+
+/*
+ * Two across, always.
+ *
+ * Eight figures as full-width rows was the "long scrolling list of statistics"
+ * the ticket names — it filled two screens before a single chart. Two columns
+ * halves that, and two is the most a 375px screen can give a money value
+ * without truncating it.
+ */
+.m-kpi-grid {
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px; margin-bottom: 4px;
+}
+.m-kpi-card {
+    display: flex; flex-direction: column; gap: 3px;
+    padding: 12px; min-width: 0;
+}
+.m-kpi-card .m-kpi-label { font-size: 10px; }
+.m-kpi-card-value {
+    font-size: 19px; font-weight: var(--weight-bold); color: var(--v3-name);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/*
+ * Horizontal meters for batch sizes.
+ *
+ * Not a bar chart: the label matters as much as the length — "Kondapur Senior"
+ * is the point, a bar at x=3 is not — and a horizontal track carries both at
+ * this width, where a vertical chart would need rotated text nobody can read.
+ *
+ * Mirrors natyam-admin's .v3-meter so the same data looks like itself on both.
+ */
+.m-meter { margin-bottom: 10px; }
+.m-meter:last-child { margin-bottom: 0; }
+.m-meter-head {
+    display: flex; justify-content: space-between; gap: 10px;
+    font-size: 12px; color: var(--v3-name); margin-bottom: 5px;
+}
+/* The name may be long and the count must never be pushed off. */
+.m-meter-head > span:first-child {
+    min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.m-meter-head > span:last-child { flex-shrink: 0; color: var(--v3-muted); }
+.m-meter-track {
+    height: 7px; border-radius: 4px; overflow: hidden;
+    background: var(--v3-row-border);
+}
+.m-meter-fill {
+    height: 100%; border-radius: 4px; min-width: 2px;
+    background: var(--v3-terracotta);
+}
+/* Students in no batch are a problem, not a class — coloured as one. */
+.m-meter-fill[data-tone="caution"] { background: var(--v3-caution); }
+
+@media (min-width: 600px) {
+    .m-kpi-grid { max-width: 620px; margin-left: auto; margin-right: auto; }
+}
+
+/*
+ * Trend lists are four months tall — UAT5, asked for directly.
+ *
+ * Twelve month-cards is most of a phone screen for one series, and on a school
+ * in its second year most of them read zero. The same cap natyam-admin's
+ * .v3-trend-cap uses, sized to this app's card instead of its row.
+ *
+ * 4 × (70px card + 10px gap), plus a sliver so the fifth card peeks — that peek
+ * is what tells a reader the list scrolls. A clean edge reads as the end of the
+ * data.
+ *
+ * The JS starts these scrolled to the BOTTOM (scrollTrendsToLatest), because
+ * the cards are chronological and the newest are last.
+ */
+.m-trend-cap {
+    max-height: 330px;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    /* No scroll-chaining out to the page when the list bottoms out — on a
+       phone that hand-off is what makes an inner scroll feel broken. */
+    overscroll-behavior: contain;
+    /* The scrollbar sits over the cards' right edge on desktop widths; a little
+       room keeps it off the badges. */
+    padding-right: 2px;
+}

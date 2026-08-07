@@ -13,6 +13,72 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versioning is
 
 ---
 
+## [3.4.0] — unreleased
+
+UAT Round 5, Phases 1 and 2. Every mobile item in `UAT Round 5 - Phase 1.docx` and
+`UAT Round 5 - Phase 2.docx`.
+
+BUG-507 (second parent application stuck on "Sending Details") is **not** in this release —
+withdrawn during the round for re-testing.
+
+### Added
+
+- **Current Trends on the owner dashboard** (ENH-506). The unlabelled statistic strip is now a
+  visual section: money in against money out over six months, this month's split as a donut,
+  and Students / Attendance / Collected as sparklines with a direction chip. Needs attention
+  and the three workspace groups are untouched, as the ticket asked.
+- **`js/ui/charts.js`** — sparkline, paired bars, donut and delta chip as inline SVG. No
+  dependency, deliberately: this is an offline-capable PWA and the smallest serious chart
+  library is fifty kilobytes to draw six points. Colours are v3 tokens, so both themes follow
+  the stylesheet.
+- **Analytics rebuilt as a BI dashboard** (ENH-505). Ten executive KPI cards two across,
+  auto-generated business insights, income and expense category splits, students by batch,
+  admissions by month, and filters for date range, branch, academic year, course and batch.
+- **Web push, client half** (ENH-510). Permission flow, FCM token capture, per-device category
+  and timing preferences, background service worker, and `/pushSubscriptions` rules. **No
+  sender exists yet**, so nothing is delivered until a Cloud Function is built — see
+  `docs/push-notifications.md` for the contract. The settings screen says so on screen.
+- **Reverse a fee waiver** (ENH-507). A written-off fee can be made payable again; the waiver's
+  Money Out is cancelled by a contra entry rather than deleted, and the reversal is audited.
+  Waived invoices are now listed at all — a waiver zeroes the balance, and every invoice list
+  filters on `balance > 0`, so they had been invisible on every screen.
+- **An Owner can be assigned to a batch** (ENH-512). `STAFF_ROLES` gains Owner with
+  `teaches: true`, and batch assignment follows that flag instead of a literal role check.
+
+### Fixed
+
+- **The teacher dashboard found no classes, ever.** `users` are keyed by email and `staff` by a
+  business code, and a batch stores the code — so `byTeacher(session.actorId())` could never
+  match. On live data: five batches found by staff id, zero by user id. `session.staffId` now
+  resolves the staff record at sign-in via the email both records already carried. The batches
+  page's "Mine" filter had the same cause and the same non-result.
+- **Enrolment asked for the branch twice** (BUG-506). The branch is chosen once in the enrol
+  sheet; the dialog that follows confirms all three choices read-only under Edit / Confirm,
+  replacing a second live selector under "Cancel / Begin review" — a stage that no longer exists.
+- **Dialog footers sat under the tab bar on iPhone** (BUG-505). Not z-order, which was already
+  fixed: `.m-modal` was capped at `88vh` while the scrim's padded box was ~86.6vh, so tall
+  dialogs overflowed into the bar's strip. Measured 55px of overlap; now zero.
+- **Fee plan was missing from the mobile student edit form** (BUG-504). It had been hidden on
+  the grounds that changing a plan raises a schedule — which is untrue of the edit path:
+  `updateStudent()` writes the field and stops. The help text now states what a change does.
+- **Payroll was missing from "Where it went"** (ENH-504 Part 3). The breakdown read the
+  `expenses` collection; payroll posts straight to the ledger. Both breakdowns are now
+  ledger-derived and reconcile with the Money Out figure above them.
+- **The user edit form could deactivate the last Administrator**, locking the school out. Its
+  Status field routed through `updateUser()`, which knew none of the rules the Deactivate
+  button enforces. Both now share one `assertMayDeactivate()`.
+
+### Changed
+
+- **Finance is a cashbook** (ENH-504 / ENH-508). Net, Money in, Money out and Margin, then
+  "Where it went", then a transaction list. Rows are one line and open a detail sheet with
+  Edit and Delete — the inline buttons and lock explanations made every row three lines tall.
+  The six-month trend moved to Analytics, which can range over it properly.
+- **Analytics ranges** are 30 days / 3 / 6 / 12 months / custom, and trend lists are capped at
+  four months, opening at the newest end.
+
+---
+
 ## [3.2.0] — unreleased
 
 Second UAT round. Every mobile item in
