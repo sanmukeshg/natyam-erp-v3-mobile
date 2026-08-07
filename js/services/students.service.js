@@ -22,11 +22,73 @@ import { recordAuditEntry } from '../data/auditLog.repository.firestore.js';
 import { localDate, nowISO, academicYearOf, ageFrom, daysBetween, addDays } from '../utils/date.js';
 import { formatMoney } from '../utils/money.js';
 import { STUDENT_STATUS, LEVELS, INVOICE_STATUS, levelLabel, levelsLabel, levelsOf } from '../config/app.config.js';
+/*
+ * UAT6 ENH-602 — the mandatory set is not the form's opinion, it is the
+ * system's. The same array the Add/Edit/Enrol forms derive their `required`
+ * flags from is asserted here, on every write, so a workflow that renders no
+ * form at all cannot get past it either.
+ */
+import { assertMandatoryStudentFields } from '../config/studentFields.js';
 import {
     students$, batches$, invoices$, payments$, attendance$, certificates$,
     documents$, programs$, settings$, curricula$, branches$, AttendanceMath
 } from '../data/repositories.js';
 import { studentFeeSummary, raiseSchedule } from './fees.service.js';
+
+/**
+ * THE INVARIANT: an ACTIVE student is always in a batch — UAT6.
+ *
+ * "A student must never exist without a valid batch" was stated as the
+ * business rule behind BUG-602, and until now it was only ever enforced by
+ * whichever form happened to be open. Four service paths could break it with
+ * no form involved:
+ *
+ *   - `assignToBatch(id, null)`, which the Move batch dialog offered outright
+ *     as "take them off every batch";
+ *   - `promote()`, which cleared the batch by design and left the student
+ *     ACTIVE, so every promotion produced exactly the record the rule forbids;
+ *   - `setStatus(ACTIVE)` on somebody returning from leave, whose batch was
+ *     cleared when they left;
+ *   - `updateStudent()` with a blank batch.
+ *
+ * All four now go through the two helpers below. The rule is scoped to ACTIVE
+ * deliberately: a graduated or inactive student SHOULD have no batch — they
+ * are not attending, and leaving them on a register is the opposite mistake.
+ */
+function isAttending(status) {
+    return (status || STUDENT_STATUS.ACTIVE) === STUDENT_STATUS.ACTIVE;
+}
+
+/**
+ * Checks a batch can actually take this student, and returns it.
+ *
+ * One function rather than the same four lines in assignToBatch(), promote()
+ * and setStatus() — they had drifted once already (only assignToBatch checked
+ * the level), and a placement rule that holds on one path and not another is
+ * indistinguishable from no rule.
+ *
+ * @param {string} batchId
+ * @param {object} student        The student being placed.
+ * @param {object} [options]
+ * @param {string} [options.level]  The level to check against, when it is
+ *   about to change — promote() places a student at their NEW level, and
+ *   checking the old one would refuse every correct destination.
+ */
+async function resolvePlacement(batchId, student, { level = null } = {}) {
+    const batch = await batches$.findOrFail(batchId);
+    if (batch.status !== 'active') throw new Error(`${batch.name} is closed and cannot take students.`);
+
+    const at = level || student.level;
+    if (!levelsOf(batch).includes(at)) {
+        throw new Error(
+            `${student.name} is at ${levelLabel(at)} and ${batch.name} teaches ${levelsLabel(levelsOf(batch))}. ` +
+            'Choose a batch that teaches their level.'
+        );
+    }
+
+    assertBatchHasRoom(batch, await countInBatch(batchId, student.id));
+    return batch;
+}
 
 /**
  * Milestone P1 (Parent/Student Portal): the read-only snapshot mirrored onto
@@ -74,6 +136,11 @@ export function batchScheduleOf(batch, studentLevel = null) {
 export async function enrol(data, { raiseFees = true } = {}) {
     session.require('student.edit', 'enrol a student');
 
+    // The same check the form makes, made again here — UAT6 ENH-602. A form is
+    // a convenience; this is the rule. Both read MANDATORY_STUDENT_FIELDS, so
+    // there is one list to change and no way for the two to disagree.
+    assertMandatoryStudentFields(data);
+
     const batch = data.batchId ? await batches$.find(data.batchId) : null;
     assertBatchHasRoom(batch, await countInBatch(data.batchId));
 
@@ -112,6 +179,18 @@ export async function updateStudent(id, changes) {
     const existing = await students$.findOrFail(id);
     const { batchId, ...rest } = changes;
 
+    /*
+     * Judged on the MERGED record, not on what was sent — UAT6 ENH-602.
+     *
+     * Both apps' Edit dialogs send the whole student back, so in practice this
+     * is the same thing; on the merged record it also holds for a caller that
+     * sends one field, which is what makes it a rule rather than a form
+     * behaviour. Nothing here can therefore blank a mandatory field, and in
+     * particular nothing can blank the batch — the BUG-602 failure, where
+     * changing the branch cleared the batch and the save went through anyway.
+     */
+    assertMandatoryStudentFields({ ...existing, ...changes });
+
     let student = await students$.update(id, normalise(rest));
     if (batchId !== undefined && batchId !== existing.batchId) {
         student = await assignToBatch(id, batchId);
@@ -122,31 +201,41 @@ export async function updateStudent(id, changes) {
 }
 
 /**
- * Places a student in a batch, or removes them from one when `batchId` is
- * null. Capacity is enforced here and nowhere else.
+ * Places a student in a batch. Capacity, level and branch are enforced here.
+ *
+ * TAKING AN ACTIVE STUDENT OFF EVERY BATCH IS NO LONGER POSSIBLE — UAT6.
+ *
+ * `batchId: null` used to mean "remove them from every batch", and both apps'
+ * Move batch dialogs offered it as the placeholder. It is the shortest route
+ * to the record BUG-602 is about: a student who is attending, being billed and
+ * counted, and who appears on no register at all. Somebody who has stopped
+ * attending has a status for that, and setStatus() clears their batch itself.
+ *
+ * Still allowed for a student who is NOT active, because that is the correct
+ * state for them — see the invariant note at the top of this file.
  */
 export async function assignToBatch(studentId, batchId) {
     session.require('student.edit', 'move a student between batches');
 
     const student = await students$.findOrFail(studentId);
     if (!batchId) {
+        if (isAttending(student.status)) {
+            throw new Error(
+                `${student.name} is attending, and an active student must be in a batch — otherwise they are billed and ` +
+                'counted but appear on no register. Move them to another batch, or set their status to On leave, ' +
+                'Graduated or Inactive, which takes them off the register properly.'
+            );
+        }
         const cleared = await students$.update(studentId, { batchId: null, batchSchedule: null });
         bus.emit(EVENTS.STUDENT_UPDATED, { student: cleared, before: student });
         return cleared;
     }
 
-    const batch = await batches$.findOrFail(batchId);
-    if (batch.status !== 'active') throw new Error(`${batch.name} is closed and cannot take students.`);
-    assertBatchHasRoom(batch, await countInBatch(batchId, studentId));
-
-    // Milestone B1: a batch teaches a *set* of levels now — the student
-    // just needs to be at one of them, not the batch's single old level.
-    if (!levelsOf(batch).includes(student.level)) {
-        throw new Error(
-            `${student.name} is at ${levelLabel(student.level)} and ${batch.name} teaches ${levelsLabel(levelsOf(batch))}. ` +
-            'Promote the student first, or choose a batch that teaches their level.'
-        );
-    }
+    // Milestone B1: a batch teaches a *set* of levels now — the student just
+    // needs to be at one of them, not the batch's single old level. Capacity,
+    // closure and level all live in resolvePlacement() so promote() and
+    // setStatus() apply exactly the same three checks.
+    const batch = await resolvePlacement(batchId, student);
 
     const updated = await students$.update(studentId, { batchId, branchId: batch.branchId, batchSchedule: batchScheduleOf(batch, student.level) });
     bus.emit(EVENTS.STUDENT_UPDATED, { student: updated, before: student });
@@ -154,14 +243,31 @@ export async function assignToBatch(studentId, batchId) {
 }
 
 /**
- * Moves a student up the curriculum ladder.
+ * Moves a student up the curriculum ladder, and into the class that teaches
+ * the level they have moved up to.
  *
- * The batch is deliberately cleared: a promoted student is not yet in a class
- * at the new level, and leaving them attached to their old batch would put
- * them on a roll call they no longer attend. They surface in the "awaiting
- * placement" queue, which is the correct next action for a registrar.
+ * PROMOTION NOW REQUIRES A DESTINATION BATCH — UAT6.
+ *
+ * It used to clear the batch and leave the student ACTIVE, on the reasoning
+ * that "a promoted student is not yet in a class at the new level" and would
+ * surface in an awaiting-placement queue. That reasoning describes exactly the
+ * record BUG-602 says must not exist: attending, billed, on no register. It
+ * also meant every promotion silently created one, and the queue it relied on
+ * is a filter on the Students screen that nobody is obliged to open.
+ *
+ * So the placement is part of the promotion rather than a chore left behind
+ * it, and it is checked against the NEW level — `resolvePlacement()` is given
+ * `next.value`, because checking the old one would refuse every correct
+ * destination. If no batch teaches the new level yet, the promotion is refused
+ * with that as the reason, which is the honest answer: the school cannot teach
+ * somebody a level it is not running.
+ *
+ * @param {string} studentId
+ * @param {object} options
+ * @param {string} options.batchId  Required. A batch teaching the next level.
+ * @param {string} [options.note]
  */
-export async function promote(studentId, { note = null } = {}) {
+export async function promote(studentId, { batchId = null, note = null } = {}) {
     session.require('student.edit', 'promote a student');
 
     const student = await students$.findOrFail(studentId);
@@ -172,15 +278,29 @@ export async function promote(studentId, { note = null } = {}) {
     }
 
     const next = LEVELS[index + 1];
+
+    if (!batchId) {
+        throw new Error(
+            `Choose the batch ${student.name} will attend at ${next.label}. A promotion that leaves them unplaced ` +
+            'takes them off every register while they are still attending.');
+    }
+
+    // Checked against the level they are moving TO, and before anything is
+    // written — a promotion that half-applies is worse than one that is
+    // refused, because the level change alone is what strands them.
+    const batch = await resolvePlacement(batchId, student, { level: next.value });
+
     const updated = await students$.update(studentId, {
         level: next.value,
-        batchId: null,
+        batchId: batch.id,
+        branchId: batch.branchId,
+        batchSchedule: batchScheduleOf(batch, next.value),
         promotedOn: localDate(),
         promotionNote: note?.trim() || null
     });
 
     bus.emit(EVENTS.STUDENT_UPDATED, { student: updated, before: student });
-    return { student: updated, from: LEVELS[index], to: next };
+    return { student: updated, from: LEVELS[index], to: next, batch };
 }
 
 /**
@@ -191,7 +311,7 @@ export async function promote(studentId, { note = null } = {}) {
  * to the caller rather than silently cancelled: whether a leaver still owes
  * money is a decision for a person, not for this function.
  */
-export async function setStatus(studentId, status, { reason = null } = {}) {
+export async function setStatus(studentId, status, { reason = null, batchId = null } = {}) {
     session.require('student.edit', "change a student's status");
 
     if (!Object.values(STUDENT_STATUS).includes(status)) throw new Error('That is not a valid student status.');
@@ -201,10 +321,36 @@ export async function setStatus(studentId, status, { reason = null } = {}) {
     const leaving = status === STUDENT_STATUS.INACTIVE || status === STUDENT_STATUS.GRADUATED;
     if (leaving && !reason?.trim()) throw new Error('Record why the student is leaving — it is the only history of it.');
 
+    /*
+     * COMING BACK NEEDS A BATCH — UAT6, the other half of the invariant.
+     *
+     * Leaving clears the batch (rightly — a leaver should not sit on a roll
+     * call), so somebody returning from Inactive, Graduated or On leave has
+     * none. Setting them back to Active without one produced the forbidden
+     * record by the back door: attending, billed, on no register. This is the
+     * only status change that can ask for anything, and it only asks when
+     * there is genuinely nothing to go back to.
+     */
+    let returning = null;
+    if (isAttending(status) && !student.batchId) {
+        if (!batchId) {
+            throw new Error(
+                `${student.name} is not in a batch — they came off one when their status last changed. ` +
+                'Choose the batch they are returning to.');
+        }
+        returning = await resolvePlacement(batchId, student);
+    }
+
     const updated = await students$.update(studentId, {
         status,
-        // A student who is not attending should not sit on a roll call.
-        batchId: leaving ? null : student.batchId,
+        // A student who is not attending should not sit on a roll call; one who
+        // is coming back goes onto the register they are returning to.
+        batchId: leaving ? null : (returning ? returning.id : student.batchId),
+        ...(returning ? {
+            branchId: returning.branchId,
+            batchSchedule: batchScheduleOf(returning, student.level)
+        } : {}),
+        ...(leaving ? { batchSchedule: null } : {}),
         statusReason: reason?.trim() || null,
         statusChangedOn: localDate(),
         ...(status === STUDENT_STATUS.GRADUATED ? { graduatedOn: localDate() } : {})

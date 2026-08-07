@@ -405,27 +405,64 @@ export async function updateFeePlan(id, changes) {
     return { plan, affected };
 }
 
-/** Retires a plan. Students already on it keep their existing invoices. */
 /**
  * Removes a fee plan outright. Retiring left inactive plans cluttering the
  * list with no way to clear them; a plan that was created by mistake should be
- * gone. Invoices already raised are untouched — they carry their own amounts —
- * and any student still pointing at the plan is unlinked so nothing references
- * a row that no longer exists.
+ * gone. Invoices already raised are untouched — they carry their own amounts.
+ *
+ * IT NO LONGER UNLINKS THE STUDENTS ON IT — UAT6.
+ *
+ * It used to set `feePlanId: null` on every student pointing at the plan, on
+ * the reasoning that nothing should reference a row that no longer exists.
+ * That is true, and unlinking is the wrong way to achieve it: fee plan is a
+ * mandatory field, so this quietly created exactly the record the rest of the
+ * ERP refuses to save — and silently, from a Settings screen, for students
+ * nobody was looking at. It also stopped their billing outright, because
+ * runBillingScheduler() only raises fees for a student who has a plan.
+ *
+ * So this now refuses while students remain, and — following closeBatch(),
+ * which had the same problem with batches — hands the caller the list so the
+ * UI can offer to move them rather than only saying no. `moveTo` reassigns
+ * them in one go, which is the answer somebody deleting a mistyped duplicate
+ * actually wants.
+ *
+ * Deliberately counts students of EVERY status, not just active ones. An
+ * inactive or graduated student keeps their fee history, and a dangling
+ * feePlanId on a record with unsettled invoices is exactly as broken.
+ *
+ * @param {string} id
+ * @param {object} [options]
+ * @param {string} [options.moveTo]  Another plan to move the students onto.
+ * @throws {Error} with `.students` attached when students remain and no
+ *   `moveTo` was given, so a caller can name them.
  */
-export async function deleteFeePlan(id) {
+export async function deleteFeePlan(id, { moveTo = null } = {}) {
     session.require('settings.edit', 'delete a fee plan');
 
     const plan = await feePlans$.findOrFail(id);
     // students has no feePlanId index, so scan rather than index-lookup.
     const assigned = (await students$.all()).filter((student) => student.feePlanId === id);
-    for (const student of assigned) {
-        await students$.update(student.id, { feePlanId: null });
+
+    if (assigned.length && !moveTo) {
+        const err = new Error(
+            `${assigned.length} student${assigned.length === 1 ? ' is' : 's are'} billed on ${plan.name}. ` +
+            'Every student must be on a fee plan, so choose the plan to move them to before deleting this one.');
+        err.students = assigned;
+        throw err;
     }
+
+    if (assigned.length && moveTo) {
+        if (moveTo === id) throw new Error('Choose a different plan to move these students onto.');
+        const target = await feePlans$.findOrFail(moveTo);
+        for (const student of assigned) {
+            await students$.update(student.id, { feePlanId: target.id });
+        }
+    }
+
     await feePlans$.remove(id, { hard: true });
 
     bus.emit(EVENTS.SETTINGS_CHANGED, { key: 'feePlans', value: null });
-    return { plan, unlinked: assigned.length };
+    return { plan, moved: assigned.length };
 }
 
 function normalisePlan(data) {

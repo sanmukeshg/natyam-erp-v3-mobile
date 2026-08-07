@@ -13,6 +13,145 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versioning is
 
 ---
 
+## [3.5.0] — unreleased
+
+UAT Round 6. All four items — BUG-601, BUG-602, ENH-601 and ENH-602 — land in both apps,
+because all four change a workflow rather than a screen.
+
+### Added
+
+- **`js/config/studentFields.js` — one definition of the student record** (ENH-602). The
+  student form's fields, and which of them are mandatory, are declared once and built from
+  three places: Add student, Edit student, and the Admissions enrol step. Byte-identical in
+  `natyam-mobile` and `natyam-admin`. There were three separate declarations before this, and
+  they disagreed — the same child got a different record depending on which screen they were
+  entered on.
+- **The mandatory set, stated in one place**: name, branch, level, batch, fee plan, guardian
+  name, guardian phone, guardian email. Enforced identically on Add, Edit and Enrolment, with
+  the same wording on every message.
+- **`enrolApplicant()` accepts the collected student record** (`options.student`), applied
+  through a named whitelist (`ENROLLED_STUDENT_DETAILS`). Called without it, it behaves
+  exactly as before.
+
+### Changed
+
+- **Enrolling a parent application collects the whole student record, in one step**
+  (BUG-601). Enrol used to ask three questions — branch, batch, fee plan — and copy
+  everything else off the application. A family application carries no address, no emergency
+  contact and no medical note, so the student was created incomplete and the Owner had to open
+  Student Management → Edit student immediately afterwards to finish it. Enrol now opens the
+  full student form, pre-filled from the application, and the read-only confirmation still
+  restates branch, batch and fee plan before anything is written.
+- **Changing a student's branch now requires a batch at the new branch** (BUG-602). The batch
+  list follows the Branch field, and a batch belonging to another branch is refused by name
+  ("That batch is at another branch"). Saving is blocked until a valid one is chosen, so a
+  student can no longer end up in one branch attached to a class in another.
+- **Batch is mandatory when editing a student**, not only when adding one (BUG-602). It was
+  optional on edit on both apps, which is how a branch change could clear it silently. Taking
+  an attending student off every batch is no longer possible from any screen — see the
+  invariant below.
+- **The Staff module is Owner and Administrator only** (ENH-601). `staff.view` is no longer
+  granted to Teacher & Reception or to Viewer, so the Staff entry disappears from the menu and
+  the dashboard, and the router refuses `/staff` typed into the address bar. Teacher names on
+  Batches, Timetable, Attendance and Programmes are unaffected — those read a name, not the
+  staff module, and the Firestore read rule is deliberately unchanged for that reason.
+
+### Fixed
+
+- **A guardian's email typed at enrolment is stored lowercase and trimmed**, as it already was
+  on every other path into a student record. `guardianAuth.service.js` matches a signed-in
+  parent with an exact-equality query against the lowercase address Firebase returns, so
+  "Priya@Gmail.com" would have signed in and been told she had no children at the school.
+
+### Added — the invariant
+
+- **`MANDATORY_STUDENT_FIELDS` is now the authority, not documentation** (ENH-602, revised).
+  No field declaration carries its own `required:` or `label:` any more — both are derived from
+  that one array and from `FIELD_LABELS`. Changing what the ERP demands of a student record is
+  a one-line edit that lands on Desktop Add, Desktop Edit, Mobile Add, Mobile Edit and Parent
+  Enrolment in the same commit, with nothing else able to hold a second opinion.
+- **`assertMandatoryStudentFields()` — the same rule enforced in the service layer.**
+  `enrol()`, `updateStudent()` and `enrolApplicant()` all call it, so a workflow that renders
+  no form — a bulk operation, an import, a screen written next year — cannot get past it
+  either. The message is the same sentence a form would have shown.
+- **`tools/verify-shared.cjs`** — checks the byte-identical shared files (the student field
+  config, four services, `firestore.rules`) against the sibling repository, so "identical by
+  convention" is checkable in one command rather than by memory. Compares content with line
+  endings normalised, and skips cleanly when no sibling checkout exists.
+
+### Changed — no active student without a batch
+
+The rule behind BUG-602 ("a student must never exist without a valid batch") was only ever
+enforced by whichever form happened to be open. Four service paths could break it with no form
+involved, and one of them did so on **every** use:
+
+- **Promotion now includes the destination batch.** `promote()` cleared the batch and left the
+  student active — which is exactly the forbidden record, produced every single time somebody
+  was promoted. It now takes a batch that teaches the *new* level and moves them straight into
+  it. Where no batch teaches that level yet, the promotion is refused with that as the reason,
+  and the dialog does not open.
+- **"Take them off every batch" is gone from Move batch.** `assignToBatch(id, null)` is refused
+  for an active student, and the dialog says to use Status instead — which clears the batch
+  properly, as part of recording that they have stopped attending.
+- **Returning from leave asks which batch.** `setStatus(ACTIVE)` on a student whose batch was
+  cleared when they left now requires one, offering only batches teaching their level at their
+  branch.
+- **Editing cannot blank a mandatory field.** `updateStudent()` validates the *merged* record,
+  not just the fields sent, so no partial write can empty one.
+
+Not scoped to active students, deliberately: a graduated or inactive student *should* have no
+batch, and leaving them on a register is the opposite mistake.
+
+### Fixed
+
+- **A student moved out of a closing batch now gets the new batch's timetable.**
+  `closeBatch(…, { moveTo })` reassigned `batchId` but left `batchSchedule` — the copy each
+  student carries for the Parent Portal — naming the batch being closed, with its old days and
+  times. Nothing else rewrites that field until the student is next edited by hand, so every
+  family moved out of a closing batch would have read the wrong timetable indefinitely.
+- **Leaving now clears the stale timetable copy too.** `setStatus()` cleared `batchId` on a
+  leaver but left `batchSchedule` behind it, so a graduated student's family kept seeing a
+  class schedule.
+
+### Changed — fee plan is protected like the mandatory field it is
+
+- **Deleting a fee plan no longer unlinks the students on it.** `deleteFeePlan()` set
+  `feePlanId: null` on every student pointing at the plan, which silently created exactly the
+  record the rest of the ERP refuses to save — and stopped their billing outright, because
+  `runBillingScheduler()` only raises fees for a student who has a plan. It now refuses while
+  students remain and accepts a `moveTo` plan to reassign them in one go, following
+  `closeBatch()`, which had the same problem with batches. The refusal carries the student
+  list so a UI can name them. Counts students of every status: a graduated student with
+  unsettled invoices and a dangling `feePlanId` is exactly as broken.
+- **A student on a retired fee plan can still be edited.** Only active plans are offered, so
+  the moment a plan was retired every student on it became un-editable — their own plan was
+  not in the list, the select fell back to the placeholder, and the form demanded a new plan
+  before it would save a corrected phone number. The student’s current plan is now kept in
+  the list and marked “(retired)”; every other retired plan stays hidden.
+
+### Fixed — deployment
+
+- **The app shell is no longer CDN-cached for an hour after a deploy.** `firebase.json`’s
+  no-cache header matched the literal path `/index.html`, which the SPA rewrite never produces
+  for a request to `/` — so every `.js` and `.css` was `no-cache` while the page loading them
+  was cached for an hour, and anyone with the app open kept the old shell until it expired. A
+  `"source": "/"` rule alongside the existing one closes it. Carried since UAT Round 5 and
+  included here because v3.5.0 changes enough screens that a stale shell would be visible.
+  `/` is the only HTTP path that serves the shell — the router is hash-based, so there are no
+  deep paths to cover.
+
+### Notes
+
+- Date of birth and gender are **not** in the mandatory set — asked during the round and
+  answered No on 2026-08-08. Both admission forms require them, so a student arriving through
+  Admissions has both regardless; requiring them here would additionally block an unrelated
+  edit on every student already on the roll who has neither.
+- Move batch, Promote and Status all requiring a batch was confirmed in the same exchange.
+- Staff on mobile remains read-and-reach — hiring and ending employment stay on
+  `natyam-admin`, unchanged by ENH-601.
+
+---
+
 ## [3.4.0] — unreleased
 
 UAT Round 5, Phases 1 and 2. Every mobile item in `UAT Round 5 - Phase 1.docx` and

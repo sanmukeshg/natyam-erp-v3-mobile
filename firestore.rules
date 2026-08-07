@@ -596,9 +596,9 @@ service cloud.firestore {
       allow delete: if isAdministrator();
     }
 
-    // staff.edit — Administrator and Owner (Teacher & Reception and Viewer
-    // hold staff.view only), so hiring, editing, deactivating and
-    // reactivating a staff member needs one of those two. Kept as its own
+    // staff.edit — Administrator and Owner. Since UAT6 ENH-601 they are also
+    // the only two roles holding staff.view, so hiring, editing, deactivating
+    // and reactivating a staff member needs one of those two. Kept as its own
     // named function rather than inlining canAdminister(), matching the
     // precedent already set for canIssueCertificates().
     function canManageStaff() {
@@ -610,8 +610,14 @@ service cloud.firestore {
     // reactivate() alike. No hard-delete path exists in the application
     // today — denied outright rather than granted speculatively.
     match /staff/{staffId} {
-      // Every role has staff.view — Administrator, Owner & Accountant,
-      // Teacher & Reception, Viewer alike.
+      // READ IS DELIBERATELY WIDER THAN staff.view — UAT6 ENH-601 took that
+      // capability off Teacher & Reception and Viewer, which hides the Staff
+      // MODULE from them and blocks /staff in the router. It must not also
+      // blind the screens they do hold: Batches, Timetable, Attendance and
+      // Programmes all resolve a teacher NAME through staff$, and a teacher
+      // dashboard reads its own record. Those are reads of a name, not access
+      // to staff administration, and the write rule below is what actually
+      // guards the module.
       allow read: if isProvisionedActiveUser();
       allow create, update: if canManageStaff();
 

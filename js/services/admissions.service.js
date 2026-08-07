@@ -18,6 +18,8 @@ import { session } from '../core/session.js';
 import { sequenceNumber } from '../utils/id.js';
 import { localDate, academicYearOf, ageFrom } from '../utils/date.js';
 import { ADMISSION_STATUS, STUDENT_STATUS, LEVELS, levelLabel, levelsLabel, levelsOf } from '../config/app.config.js';
+// UAT6 ENH-602 — the one mandatory-field rule, asserted on this path too.
+import { assertMandatoryStudentFields } from '../config/studentFields.js';
 import {
     admissions$, drafts$, students$, batches$, feePlans$, branches$, settings$
 } from '../data/repositories.js';
@@ -358,6 +360,22 @@ export async function reopen(id) {
    ========================================================================== */
 
 /**
+ * The student fields the enrolment form is allowed to set — UAT6 BUG-601.
+ *
+ * Deliberately a list and not "everything the form sent". Batch, branch and
+ * fee plan are absent because enrolApplicant() decides all three itself
+ * (branch follows the batch; the plan is checked to exist first), and
+ * admissionNo/admissionId/status are the function's own to allocate. Anything
+ * added to js/config/studentFields.js that a student record should actually
+ * keep needs adding here too, or it will be collected and quietly dropped.
+ */
+const ENROLLED_STUDENT_DETAILS = Object.freeze([
+    'name', 'level', 'gender', 'dateOfBirth', 'joinedOn', 'billingFrequency',
+    'guardianName', 'guardianRelation', 'guardianPhone', 'guardianEmail',
+    'alternatePhone', 'address', 'bloodGroup', 'medicalNotes', 'notes'
+]);
+
+/**
  * Creates the student record for an approved application.
  *
  * Everything about this function is arranged around not repeating 1.0's
@@ -378,9 +396,14 @@ export async function reopen(id) {
  * @param {string} [options.feePlanId]      Defaults to the application's plan.
  * @param {string} [options.joinedOn]       Defaults to today.
  * @param {boolean} [options.raiseFees=true]
+ * @param {object} [options.student]        The rest of the student record, as
+ *   collected by the enrolment form — see ENROLLED_STUDENT_DETAILS below.
+ *   Optional: without it this behaves exactly as it always did, copying what
+ *   the application happens to carry.
  */
 export async function enrolApplicant(admissionId, {
-    batchId, feePlanId = null, branchId = null, joinedOn = null, raiseFees = true
+    batchId, feePlanId = null, branchId = null, joinedOn = null, raiseFees = true,
+    student: details = null
 } = {}) {
     session.require('admission.approve', 'enrol an applicant');
 
@@ -470,7 +493,7 @@ export async function enrolApplicant(admissionId, {
     // — the student is created first, deliberately, so a failure in the step
     // below leaves an enrolled student with a stale application rather than
     // an "enrolled" application pointing at a student that doesn't exist.
-    const student = await students$.create({
+    const record = {
         admissionNo: sequenceNumber('NAT/ADM', year, seq),
         name: admission.name,
         level: admission.level,
@@ -495,7 +518,68 @@ export async function enrolApplicant(admissionId, {
         previousExperience: admission.previousExperience || null,
         photo: admission.photo || null,
         admissionId: admission.id
-    });
+    };
+
+    /*
+     * UAT6 BUG-601 — what the person filled in wins over what the application
+     * happened to carry.
+     *
+     * The enrolment step used to ask for three things (batch, fee plan, branch)
+     * and copy the rest off the application, so a family-submitted applicant
+     * became a student with no address, no emergency contact and no medical
+     * note — and the Owner had to open Edit student straight afterwards to
+     * finish a record they had just created. The form now asks for the whole
+     * thing, and this is where those answers land.
+     *
+     * Whitelisted rather than spread wholesale: the form's values also carry
+     * batchId, feePlanId and branchId, and all three are decided above —
+     * branch follows the batch, and the plan has already been checked to
+     * exist. A blank answer is stored as null, never as an empty string, so
+     * `student.address || fallback` keeps working everywhere downstream.
+     */
+    if (details) {
+        for (const key of ENROLLED_STUDENT_DETAILS) {
+            if (!(key in details)) continue;
+            const value = details[key];
+            record[key] = value === '' || value === undefined ? null : value;
+        }
+        // Emergency contact has always fallen back to the guardian's number,
+        // and the form asks for it under that name — so keep the two in step
+        // rather than letting the enrolment form be the one place they differ.
+        if ('alternatePhone' in details) {
+            record.emergencyContact = record.alternatePhone || record.guardianPhone || null;
+        }
+    }
+
+    /*
+     * The same two normalisations students.service.js's own normalise() does
+     * on every other path into a student record, applied here because this
+     * path never had them and now takes typed input.
+     *
+     * The email one is not cosmetic: guardianAuth.service.js resolves a
+     * signed-in parent with `where('guardianEmail', '==', email)` against the
+     * lowercase address Firebase hands back, so a student saved with
+     * "Priya@Gmail.com" has a family that can sign in and be told they have no
+     * children at the school.
+     */
+    if (record.name) record.name = String(record.name).trim().replace(/\s+/g, ' ');
+    if (record.guardianEmail) record.guardianEmail = String(record.guardianEmail).trim().toLowerCase();
+
+    /*
+     * The same mandatory check every other student workflow makes — UAT6
+     * ENH-602. This path writes through students$.create() directly rather than
+     * students.service.js's enrol(), which is why it needs saying here: without
+     * it, Parent Enrolment was the one workflow of the five that could produce
+     * a student the other four would have refused. In particular a caller that
+     * supplied no fee plan, and an application that carries none either, made a
+     * student who is never billed at all.
+     *
+     * Read from the same MANDATORY_STUDENT_FIELDS array the enrolment form
+     * derives its `required` flags from, so the form and this cannot disagree.
+     */
+    assertMandatoryStudentFields(record);
+
+    const student = await students$.create(record);
 
     // Persisted through the Admissions repository (admissions$.update())
     // rather than a hand-rolled write, for the same reason as the student

@@ -185,8 +185,20 @@ export async function closeBatch(id, { reason = null, moveTo = null } = {}) {
         if (target.capacity && existing.length + roster.length > target.capacity) {
             throw new Error(`${target.name} seats ${target.capacity} and already has ${existing.length}. It cannot take ${roster.length} more.`);
         }
+        // `batchSchedule` moves with them — UAT6. It did not, and the copy each
+        // student carries for the Parent Portal (see students.service.js's
+        // batchScheduleOf()) went on naming the batch that was being closed,
+        // with its old days and times. Nothing else rewrites that field until
+        // the student is next edited by hand, so every family moved out of a
+        // closing batch would have read the wrong timetable indefinitely.
+        // updateBatch() above already refreshes it on a reschedule; this is the
+        // same obligation on the one path that skipped it.
         for (const student of roster) {
-            await students$.update(student.id, { batchId: moveTo, branchId: target.branchId });
+            await students$.update(student.id, {
+                batchId: moveTo,
+                branchId: target.branchId,
+                batchSchedule: batchScheduleOf(target, student.level)
+            });
         }
     }
 

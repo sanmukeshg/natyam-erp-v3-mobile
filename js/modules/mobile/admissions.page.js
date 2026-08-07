@@ -44,6 +44,8 @@ import {
     submit as submitApplication, validateStep, ADMISSION_STEPS
 } from '../../services/admissions.service.js';
 import { listBranches, listFeePlans } from '../../services/settings.service.js';
+import { listBatches } from '../../services/batches.service.js';
+import { studentFormFields, seedStudentValues, applicantSeed } from '../../config/studentFields.js';
 import { formModal, confirmModal } from '../../ui/form.js';
 import { filterBar, renderFilterPanel, bindFilterToggle } from '../../ui/filterBar.js';
 import { showLoadError } from '../../ui/loadState.js';
@@ -251,20 +253,20 @@ export default class MobileAdmissionsPage extends Page {
     }
 
     /**
-     * The enrol step asks for a batch AND a fee plan, both required.
+     * The application, read-only.
      *
-     * The fee plan is asked here because this is the only moment it can be.
-     * enrolApplicant() bills through feePlanId, falling back to the
-     * application's own — and a family applying through the Natyam app never
-     * supplies one, because the public form does not ask. So a self-submitted
-     * applicant was enrolled with no plan, and enrolApplicant's own
-     * `if (raiseFees && planId)` then skipped billing entirely: no schedule,
-     * no invoice, no message. The student simply showed zero fees forever.
+     * The three enrolment selects that used to live at the foot of this sheet
+     * (branch, batch, fee plan) are gone — UAT6 BUG-601. They were the only
+     * things asked before a student was created, so everything else about that
+     * student was copied off the application, and a family-submitted one
+     * carries no address, no emergency contact and no medical note. The
+     * enrolment finished and the Owner then had to open Edit student to
+     * complete a record they had just made.
      *
-     * Nothing afterwards could set it either — Edit student hides the fee plan
-     * field by design, since choosing one raises the schedule on the spot and
-     * that is wrong as a side effect of fixing a phone number. So this step is
-     * where it has to happen.
+     * Enrol now opens the full student form instead, seeded from this
+     * application. What survives here is the pre-flight: the two conditions
+     * that would make that form unanswerable, said before it opens rather than
+     * discovered inside it.
      */
     paintDetail() {
         let host = this.container.querySelector('[data-role="sheet"]');
@@ -361,72 +363,33 @@ export default class MobileAdmissionsPage extends Page {
 
                     ${enrolling ? html`
                         <!--
-                          UAT5-BUG-506 — the branch is chosen HERE, once.
+                          UAT6 BUG-601 — branch, batch and fee plan are no longer
+                          asked HERE, because they were never enough on their own.
 
-                          It used to be asked in a pop-up after Enrol was tapped,
-                          which put a second branch selector in front of someone
-                          who had already set branch, batch and fee plan, under
-                          buttons ("Cancel" / "Begin review") describing a stage
-                          that no longer exists. The question was never wrong —
-                          a family-submitted application genuinely carries no
-                          branchId — only its placement. It now sits with the
-                          other two enrolment choices, and the pop-up that
-                          follows confirms all three read-only.
-
-                          Only shown when the application has no branch. A
-                          walk-in taken at the desk already carries a real one,
-                          and enrolApplicant() never overwrites it.
+                          They were the only three questions between an
+                          application and a student record, so everything else
+                          about that student came off the application — and a
+                          family-submitted one carries no address, no emergency
+                          contact and no medical note. Enrol now opens the full
+                          student form, seeded from this application, with these
+                          three among its fields; the read-only summary that
+                          follows (UAT5-BUG-506) still restates all three before
+                          anything is written.
                         -->
-                        ${app.branchId ? '' : html`
-                            <label class="m-facts" style="gap:8px;">
-                                <span style="color:var(--v3-muted);font-size:11.5px;">Which branch? *</span>
-                                <select data-role="branch" required
-                                        style="width:100%;min-height:var(--v3-tap);background:rgba(255,255,255,0.08);color:var(--v3-name);border:1px solid var(--v3-card-border);border-radius:10px;font:inherit;padding:0 10px;">
-                                    <option value="">Choose a branch…</option>
-                                    ${(this.branches || []).map((branch) => html`
-                                        <option value="${branch.id}"
-                                                ${branch.id === this.suggestedBranchId(app) ? 'selected' : ''}>${branch.name}</option>
-                                    `)}
-                                </select>
-                            </label>
-                            ${this.branches?.length ? '' : html`
-                                <div class="m-notice" data-tone="caution">
-                                    No branches are set up yet — add one in Settings before enrolling.
-                                </div>
+                        <div class="m-notice" data-tone="info">
+                            Enrol asks for the whole student record — branch, batch, fee plan,
+                            guardian and contact details — in one step, filled in from this
+                            application. Nothing is written until you confirm.
+                            ${app.branchId || !app.preferredBranch ? '' : html`
+                                The form starts on the closest match to ${app.preferredBranch};
+                                check it before enrolling.
                             `}
-                        `}
-
-                        <label class="m-facts" style="gap:8px;">
-                            <span style="color:var(--v3-muted);font-size:11.5px;">Enrol into which batch? *</span>
-                            <select data-role="batch" required
-                                    style="width:100%;min-height:var(--v3-tap);background:rgba(255,255,255,0.08);color:var(--v3-name);border:1px solid var(--v3-card-border);border-radius:10px;font:inherit;padding:0 10px;">
-                                <option value="">Choose a batch…</option>
-                                ${(eligibleBatches || []).map((batch) => html`
-                                    <option value="${batch.id}">
-                                        ${batch.name}${batch.seatsLeft != null ? ` — ${batch.seatsLeft} left` : ''}
-                                    </option>
-                                `)}
-                            </select>
-                        </label>
+                        </div>
                         ${eligibleBatches?.length ? '' : html`
                             <div class="m-notice" data-tone="caution">
-                                No batch matches this level yet.
+                                No batch is open yet. Create or reopen one before enrolling.
                             </div>
                         `}
-
-                        <label class="m-facts" style="gap:8px;">
-                            <span style="color:var(--v3-muted);font-size:11.5px;">On which fee plan? *</span>
-                            <select data-role="fee-plan" required
-                                    style="width:100%;min-height:var(--v3-tap);background:rgba(255,255,255,0.08);color:var(--v3-name);border:1px solid var(--v3-card-border);border-radius:10px;font:inherit;padding:0 10px;">
-                                <option value="">Choose a fee plan…</option>
-                                ${(this.feePlans || []).map((plan) => html`
-                                    <option value="${plan.id}"
-                                            ${plan.id === app.feePlanId ? 'selected' : ''}>
-                                        ${plan.name} — ${formatMoney(plan.amount)}
-                                    </option>
-                                `)}
-                            </select>
-                        </label>
                         ${this.feePlans?.length ? '' : html`
                             <div class="m-notice" data-tone="caution">
                                 No fee plans are set up yet — add one in Settings before enrolling.
@@ -498,30 +461,32 @@ export default class MobileAdmissionsPage extends Page {
      * The confirmation before an applicant becomes a student — UAT5-BUG-506.
      *
      * READ-ONLY BY DESIGN. This dialog exists to be checked, not filled in:
-     * every value on it was chosen on the sheet behind it, and repeating any of
+     * every value on it was chosen on the form behind it, and repeating any of
      * them as a live control is what made the old version read as a second,
      * disagreeing branch step. So the three choices are restated as facts, and
-     * the negative button says what it does — Edit returns to the sheet with
-     * the selections intact, because nothing has been written yet.
+     * the negative button says what it does — Edit returns to the form with
+     * every answer intact, because nothing has been written yet.
      *
      * Batch and fee plan join the branch even though only the branch was
      * reported: "Edit" promises the Owner can change any of the three, and a
      * dialog that shows one of them cannot honour that promise.
      *
+     * The three lists are passed in rather than read off `this` — UAT6
+     * BUG-601. The batch now comes from the whole school's list, narrowed by
+     * the branch chosen on the form, and `this.detail.eligibleBatches` (which
+     * is keyed to the application's own, possibly absent, branch) can no
+     * longer name it. Identical to natyam-admin's.
+     *
      * @returns {Promise<boolean>} true to go ahead, false to go back and edit.
      */
-    confirmEnrolment(app, { branchId, batchId, feePlanId }) {
-        const nameOf = (list, id, fallback) =>
-            (list || []).find((row) => row.id === id)?.name || fallback;
-
-        const branchName = app.branchId
-            ? nameOf(this.branches, app.branchId, 'This application’s branch')
-            : nameOf(this.branches, branchId, '—');
-        const batch = (this.detail?.eligibleBatches || []).find((row) => row.id === batchId);
-        const plan = (this.feePlans || []).find((row) => row.id === feePlanId);
+    confirmEnrolment(app, values, { branches, batches, feePlans }) {
+        const branch = branches.find((b) => b.id === (app.branchId || values.branchId));
+        const batch = batches.find((b) => b.id === values.batchId);
+        const plan = feePlans.find((p) => p.id === values.feePlanId);
+        const branchName = branch?.name || '—';
 
         return confirmModal({
-            title: `Enrol ${app.name}?`,
+            title: `Enrol ${values.name || app.name}?`,
             // No tone: this is a summary, not a warning, and a caution-coloured
             // panel would read as "something is wrong with these choices".
             tone: null,
@@ -569,63 +534,86 @@ export default class MobileAdmissionsPage extends Page {
         }
     }
 
+    /**
+     * Enrolment, in one step — UAT6 BUG-601.
+     *
+     * The whole student record is collected here, from the same field list the
+     * Students screen uses (js/config/studentFields.js), seeded from the
+     * application. Everything the family already answered is carried across to
+     * be confirmed rather than retyped; everything a student record needs and
+     * an application does not carry — emergency contact, address, medical note
+     * — is asked for now, while the record can still be created complete
+     * instead of finished off in Edit student afterwards.
+     *
+     * Batches are fetched for EVERY branch, not this application's: a
+     * family-submitted one has no branch at all until the form's Branch field
+     * answers for it, and the batch list follows that field.
+     */
     async enrol(app) {
-        const batchId = this.container.querySelector('[data-role="batch"]')?.value;
-        if (!batchId) {
-            toast.error('Choose a batch', 'An applicant is enrolled into a batch, so one has to be picked first.');
-            return;
-        }
-
-        // All three required, and checked here rather than trusted to the
-        // markup: these are bare <select>s in a sheet, not a <form>, so
-        // `required` on them is a hint to the reader and nothing enforces it on
-        // submit.
-        const feePlanId = this.container.querySelector('[data-role="fee-plan"]')?.value;
-        if (!feePlanId) {
-            toast.error('Choose a fee plan',
-                'Without one the student is enrolled but never billed — no schedule, no invoice.');
-            return;
-        }
-
-        /*
-         * The branch, for a family-submitted application that has none — now a
-         * field on the sheet rather than a pop-up (UAT5-BUG-506). A staff-taken
-         * application already carries a real branchId, so the field is absent
-         * and this reads null; enrolApplicant() only ever fills a gap and cannot
-         * overwrite one.
-         */
-        const branchId = app.branchId
-            ? null
-            : this.container.querySelector('[data-role="branch"]')?.value || null;
-        if (!app.branchId && !branchId) {
-            toast.error('Choose a branch',
-                'This application arrived from the family without one, so it has to be set before enrolling.');
-            return;
-        }
-
-        /*
-         * Confirm before writing. Asked BEFORE the busy flag so the sheet stays
-         * exactly as it was when Edit is chosen — nothing has been written, and
-         * every selection is still on screen to change.
-         */
-        const go = await this.confirmEnrolment(app, { branchId, batchId, feePlanId });
-        if (!go) return;
-        if (this.disposed) return;
-
+        // Three round trips before the form can open, so the button that
+        // started them is disabled meanwhile — otherwise a second tap during
+        // the fetch opens a second enrolment form over the first.
         this.busy = true;
         this.paintDetail();
+
+        let batches, feePlans, branches;
         try {
-            await enrolApplicant(app.id, { batchId, feePlanId, branchId });
-            toast.success('Enrolled', `${app.name} is now a student.`);
-            this.busy = false;
-            this.detail = null;
-            await this.load();
+            [batches, feePlans, branches] = await Promise.all([
+                listBatches(null),
+                listFeePlans().catch(() => this.feePlans || []),
+                listBranches().catch(() => this.branches || [])
+            ]);
         } catch (err) {
             this.busy = false;
             if (this.disposed) return;
-            toast.error(`Could not enrol — ${err.message}`);
+            toast.error(`Could not open the enrolment form — ${err.message}`);
             this.paintDetail();
+            return;
         }
+        this.feePlans = feePlans;
+        this.branches = branches;
+        this.busy = false;
+        if (this.disposed) return;
+        this.paintDetail();
+
+        const fields = studentFormFields({
+            mode: 'enrol',
+            existing: applicantSeed(app, { branchId: this.suggestedBranchId(app) }),
+            branches,
+            batches,
+            feePlans,
+            defaultBranchId: session.branch() || ''
+        });
+
+        const enrolled = await formModal({
+            title: `Enrol ${app.name}`,
+            description: 'Everything the student record needs, in one step. Nothing is written until you confirm.',
+            submitLabel: 'Enrol student',
+            fields,
+            values: seedStudentValues(fields),
+            onSubmit: async (values) => {
+                const go = await this.confirmEnrolment(app, values, { branches, batches, feePlans });
+                // Thrown rather than returned: the form stays open with every
+                // answer intact, which is exactly what "Edit" promised.
+                if (!go) throw new Error('Nothing has been written yet — change what you need to, then enrol again.');
+
+                const { batchId, feePlanId, branchId, ...student } = values;
+                return enrolApplicant(app.id, {
+                    batchId,
+                    feePlanId,
+                    // enrolApplicant() only ever fills a gap with this and can
+                    // never overwrite a branch the application already has.
+                    branchId: branchId || null,
+                    joinedOn: values.joinedOn || null,
+                    student
+                });
+            }
+        });
+
+        if (!enrolled) return;
+        toast.success('Enrolled', `${app.name} is now a student.`);
+        this.detail = null;
+        await this.load();
     }
 
     async doReject() {

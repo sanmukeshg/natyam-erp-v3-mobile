@@ -22,7 +22,7 @@ export const APP = Object.freeze({
     // 3.0.0, not a continuation of 2.26.5: v3 is a new application built by
     // splitting the reference project in two, with a mobile-first staff
     // experience. See CHANGELOG.md and MIGRATION_CHECKLIST.md.
-    version: '3.4.0',
+    version: '3.5.0',
     organisation: 'NATYAM — School of Kuchipudi',
     locale: 'en-IN',
     currency: 'INR',
@@ -725,16 +725,34 @@ export const ROLES = Object.freeze({
             CAPABILITIES.ATTENDANCE_VIEW, CAPABILITIES.ATTENDANCE_MARK,
             CAPABILITIES.FEE_VIEW, CAPABILITIES.FEE_COLLECT,
             CAPABILITIES.PROGRAM_VIEW, CAPABILITIES.PROGRAM_EDIT,
-            CAPABILITIES.REPORT_VIEW, CAPABILITIES.REPORT_EXPORT,
-            CAPABILITIES.STAFF_VIEW
+            CAPABILITIES.REPORT_VIEW, CAPABILITIES.REPORT_EXPORT
+            /*
+             * NO staff.view — UAT6 ENH-601.
+             *
+             * Staff management is an administrative function. A teacher or a
+             * receptionist has no business opening the roll of employees,
+             * their wage bill or their end-of-employment history, and the
+             * screen offered all three. Dropping the capability is the whole
+             * fix: js/config/navigation.js gates the entry on it, so the item
+             * disappears from the menu, and router.js checks the same string
+             * before it loads a page, so typing /staff into the address bar is
+             * refused too.
+             *
+             * This does NOT take teacher NAMES away from them. Batches,
+             * Timetable, Attendance and Programmes read staff through
+             * staff.service.js, which requires staff.edit for writes and
+             * nothing at all for reads — so the teacher picker on a batch and
+             * the teacher dashboard both keep working. The Firestore rule for
+             * /staff is unchanged and deliberately so, for the same reason.
+             */
         ]
     },
     viewer: {
         label: 'Viewer',
-        description: 'Read-only access across every module — no edits, approvals, collections or exports.',
+        description: 'Read-only across the operational modules — students, admissions, attendance, fees, finance, programmes and reports. No edits, approvals, collections or exports, and no Staff (UAT6 ENH-601).',
         capabilities: [
             CAPABILITIES.STUDENT_VIEW, CAPABILITIES.ADMISSION_VIEW, CAPABILITIES.ATTENDANCE_VIEW,
-            CAPABILITIES.FEE_VIEW, CAPABILITIES.FINANCE_VIEW, CAPABILITIES.STAFF_VIEW,
+            CAPABILITIES.FEE_VIEW, CAPABILITIES.FINANCE_VIEW,
             CAPABILITIES.PROGRAM_VIEW, CAPABILITIES.REPORT_VIEW, CAPABILITIES.SETTINGS_VIEW
         ]
     }
