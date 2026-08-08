@@ -13,6 +13,31 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versioning is
 
 ---
 
+## [3.6.1] — unreleased
+
+Hardening after the push-subscription failure was reported a second time, from a device the
+deployed code could not have produced it on.
+
+### Changed
+
+- **`pushSubscriptions.save()` drops any undefined value** instead of forwarding it. Firestore
+  rejects an entire write for one undefined field, so a single missing optional property takes
+  the whole subscription with it and the person just sees "notifications could not be enabled".
+  The callers already defend themselves; a repository that forwards caller data should not be
+  one missing property away from breaking the feature. `null`, `false`, `0` and `''` are
+  preserved — only `undefined` is dropped, because absent and explicitly-null mean different
+  things to the sender's queries.
+- **The push failure message names the build** — "Notifications could not be enabled
+  (v3.6.1) — …". These get reported by screenshot from a phone, where the first question is
+  always whether the code is current: an installed iOS PWA can keep running an older copy of a
+  module long after the server stopped serving it, and nothing in the old text distinguished
+  that from a real bug. Ruling it out took three origin probes, a cache-header check and a
+  service-worker read that a version number in the toast would have answered outright.
+
+Mobile only — neither file exists in `natyam-admin`, which stays at 3.6.0.
+
+---
+
 ## [3.6.0] — unreleased
 
 Two features that were built everywhere except the one place someone could use them.

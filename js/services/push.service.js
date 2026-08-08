@@ -35,6 +35,7 @@
 import { session } from '../core/session.js';
 import { pushSubscriptions$ } from '../data/repositories.js';
 import { firebaseConfig, vapidKey } from '../config/firebase.config.js';
+import { APP } from '../config/app.config.js';
 import { nowISO } from '../utils/date.js';
 
 /**
@@ -230,7 +231,20 @@ export async function enablePush({ categories = DEFAULTS.categories, leadMinutes
         return { ok: true, token };
     } catch (err) {
         console.error('Could not enable push notifications', err);
-        return { ok: false, reason: `Notifications could not be enabled — ${err.message}` };
+        /*
+         * The build number is in the message on purpose.
+         *
+         * A push failure is reported by screenshot, from a phone, usually by
+         * someone who cannot open a console. The first question is always
+         * "is this the current code?" — an installed iOS PWA can go on running
+         * an older copy of a module long after the server stopped serving it,
+         * and without the version in the text there is no way to tell that
+         * from a genuine bug. One `v3.6.1` in the toast answers it.
+         */
+        return {
+            ok: false,
+            reason: `Notifications could not be enabled (v${APP.version}) — ${err.message}`
+        };
     }
 }
 

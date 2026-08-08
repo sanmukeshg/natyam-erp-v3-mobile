@@ -61,8 +61,28 @@ class FirestorePushSubscriptionRepository {
      */
     async save(token, data) {
         const { id, ...fields } = data;
-        await setDoc(doc(firestore, 'pushSubscriptions', token), fields);
-        return { id: token, ...fields };
+
+        /*
+         * Any remaining undefined is dropped rather than sent.
+         *
+         * Belt and braces on top of the destructure above. Firestore rejects
+         * the whole write for a single undefined value, so one optional field
+         * that happens to be missing takes the entire subscription with it —
+         * and the person just sees "notifications could not be enabled". The
+         * callers do defend themselves (session.branch() and staffId are
+         * null-coerced, actorId/actorName/role carry || fallbacks), but a
+         * repository that forwards caller data to Firestore should not be one
+         * missing property away from breaking the feature.
+         *
+         * Deliberately drops rather than converting to null: absent and
+         * explicitly-null mean different things to the sender's queries.
+         */
+        const clean = Object.fromEntries(
+            Object.entries(fields).filter(([, v]) => v !== undefined)
+        );
+
+        await setDoc(doc(firestore, 'pushSubscriptions', token), clean);
+        return { id: token, ...clean };
     }
 
     async remove(token) {
