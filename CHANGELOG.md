@@ -13,7 +13,52 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versioning is
 
 ---
 
-## [3.5.1] — unreleased
+## [3.6.0] — unreleased
+
+Two features that were built everywhere except the one place someone could use them.
+Both land in `natyam-mobile` and `natyam-admin`.
+
+### Added
+
+- **Declare a holiday** — Settings → Holidays, in both apps. The repository, the dashboard
+  day board, Backup & restore and the `holidayReminders` Cloud Function were all written and
+  all working; nothing could create a row, so the collection was permanently empty and every
+  one of those readers read nothing. `holidays.repository.firestore.js` said so in its own
+  header ("No create/update/delete path exists anywhere in the app today") and had said so
+  since Milestone 23.
+- **`js/services/holidays.service.js`**, byte-identical across both repos. Gated on
+  `settings.edit`, the same capability that owns branches and fee plans. Upcoming and past
+  are returned separately, past capped at 400 days. The repository needed no changes at all.
+- **Branch-scoped holidays.** `branchId: null` closes the academy; a branch id closes one
+  site. `holidays$.on()` and `holidayReminders` both already honoured this — only a way to
+  express it was missing.
+- **Post an announcement** — the Notifications screen in both apps, gated on `settings.edit`.
+  `announce()`, `removeAnnouncement()` and `listAnnouncements()` have been complete in
+  `notifications.service.js` since the module was written, the centre already displayed
+  announcements, and the `onAnnouncementPosted` trigger already pushed them. **`announce()`
+  had no caller anywhere in either app.** This is the caller; the service is untouched.
+
+### Changed
+
+- **A holiday does not cancel classes**, and the screen says so rather than leaving it to be
+  discovered. Milestone 6 deliberately decoupled attendance from holidays; re-coupling them
+  would mean a register silently emptied by a calendar entry. Cancelling a class stays a
+  deliberate act in Timetable, which already emits its own notification.
+- **`firestore.rules`: holidays are writable.** The block was `create, update, delete: if
+  false` — honest while nothing wrote there, and the reason the collection stayed empty.
+  Now `create, update` on `canManageSettings()`, hard `delete` Administrator-only for
+  `replaceAll()` during a restore, matching branches. **Needs publishing by hand.**
+
+### Fixed
+
+- **Enabling push notifications failed outright** (v3.5.1, kept here for the record). The
+  subscription repository wrote `{ ...data, id: undefined }`, meaning to strip the document
+  key before storing. Assigning `undefined` does not remove a key — Firestore rejects the
+  value and the write never landed, on every device and every account.
+
+---
+
+## [3.5.1] — 2026-08-08
 
 Two follow-ups, both raised after Round 6 was already live.
 

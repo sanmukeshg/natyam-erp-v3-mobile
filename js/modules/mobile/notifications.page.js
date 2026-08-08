@@ -32,7 +32,12 @@ import { toast } from '../../ui/toast.js';
 import { session } from '../../core/session.js';
 import { EVENTS } from '../../core/bus.js';
 import { relativeTime } from '../../utils/date.js';
-import { centre, markRead, markAllRead, dismiss, refreshAlerts } from '../../services/notifications.service.js';
+import {
+    centre, markRead, markAllRead, dismiss, refreshAlerts,
+    announce, removeAnnouncement
+} from '../../services/notifications.service.js';
+import { CAPABILITIES } from '../../config/app.config.js';
+import { formModal, confirmModal } from '../../ui/form.js';
 import { showLoadError } from '../../ui/loadState.js';
 
 const SEVERITY_ORDER = { error: 0, warning: 1, success: 2, info: 3 };
@@ -92,6 +97,9 @@ export default class MobileNotificationsPage extends Page {
         const d = this.data;
         const rows = this.visibleRows();
         const announcements = d?.announcements || [];
+        // settings.edit — the same capability announce() itself requires, so
+        // the button appears exactly when the action would succeed.
+        const mayPost = session.can(CAPABILITIES.SETTINGS_EDIT);
 
         render(this.container, html`
             <div class="m-subhead">
@@ -112,6 +120,12 @@ export default class MobileNotificationsPage extends Page {
                             ${d?.unread ? '' : 'disabled'}>
                         ${raw(icon('check', { size: 16 }))}
                     </button>
+                    ${mayPost ? html`
+                        <button class="m-icon-btn" data-action="post-announcement"
+                                aria-label="Post an announcement">
+                            ${raw(icon('plus', { size: 16 }))}
+                        </button>
+                    ` : ''}
                 </div>
                 <div class="m-chip-scroll">
                     ${FILTERS.map((f) => html`
@@ -141,6 +155,14 @@ export default class MobileNotificationsPage extends Page {
                                 <div class="m-card-title">${a.pinned ? '📌 ' : ''}${a.title}</div>
                                 ${a.body ? html`<div class="m-card-meta">${a.body}</div>` : ''}
                                 <div class="m-card-meta">${a.author || 'The school'}${a.at ? ` · ${relativeTime(a.at)}` : ''}</div>
+                                ${mayPost ? html`
+                                    <div class="m-actions" style="margin-top:10px;">
+                                        <button class="m-btn m-btn-ghost" data-action="remove-announcement"
+                                                data-id="${a.id}">
+                                            ${raw(icon('trash', { size: 15 }))} Take down
+                                        </button>
+                                    </div>
+                                ` : ''}
                             </div>
                         `)}
                     </div>
@@ -198,6 +220,73 @@ export default class MobileNotificationsPage extends Page {
         }
     }
 
+    /* ------------------------------------------------------- ANNOUNCEMENTS */
+
+    /**
+     * Posting a notice.
+     *
+     * `announce()` has existed in notifications.service.js since the module was
+     * written and had no caller anywhere in either app — the notification
+     * centre could show announcements but nothing could create one. This is
+     * that caller; the service is unchanged.
+     *
+     * A post goes to EVERY subscribed device via the onAnnouncementPosted
+     * trigger, and cannot be recalled once sent. The dialog says so rather than
+     * relying on the author to know it.
+     */
+    async postAnnouncement() {
+        const posted = await formModal({
+            title: 'Post an announcement',
+            description: 'Appears for everyone in the app, and pushes to devices with '
+                + 'Announcements switched on. It cannot be unsent.',
+            submitLabel: 'Post',
+            fields: [
+                { name: 'title', label: 'Announcement', required: true,
+                  placeholder: 'Hall change for Saturday' },
+                { name: 'body', label: 'Details', type: 'textarea', rows: 3,
+                  help: 'Optional. Shown under the title.' },
+                { name: 'pinned', label: 'Keep at the top', type: 'switch',
+                  help: 'Pinned notices sort above the rest until taken down.' }
+            ],
+            values: { title: '', body: '', pinned: false },
+            onSubmit: (v) => announce({
+                title: v.title,
+                body: v.body,
+                pinned: Boolean(v.pinned)
+            })
+        });
+
+        if (!posted) return;
+        toast.success('Announcement posted', posted.title);
+        this.showAnnouncements = true;
+        await this.load();
+    }
+
+    /**
+     * Takes a notice down.
+     *
+     * "Take down" rather than "delete", because that is honestly all it does:
+     * a push already delivered is on people's phones and this cannot reach it.
+     */
+    async takeDownAnnouncement(id) {
+        const a = (this.data?.announcements || []).find((x) => x.id === id);
+        if (!a) return;
+
+        const ok = await confirmModal({
+            title: `Take down "${a.title}"?`,
+            message: 'It disappears from the app for everyone. Any push already delivered '
+                + 'stays on the devices that received it.',
+            confirmLabel: 'Take down',
+            tone: 'caution'
+        });
+        if (!ok) return;
+
+        await this.run('Taking down', async () => {
+            await removeAnnouncement(id);
+            toast.success('Announcement taken down', a.title);
+        });
+    }
+
     bind() {
         const root = this.container;
 
@@ -225,6 +314,10 @@ export default class MobileNotificationsPage extends Page {
             const row = this.data?.rows.find((r) => r.id === t.dataset.id);
             if (row && !row.read) markRead(row.id).catch(() => {});
         }));
+
+        this.onDispose(on(root, 'click', '[data-action="post-announcement"]', () => this.postAnnouncement()));
+        this.onDispose(on(root, 'click', '[data-action="remove-announcement"]', (_e, t) =>
+            this.takeDownAnnouncement(t.dataset.id)));
 
         this.onDispose(on(root, 'click', '[data-action="refresh"]', () =>
             this.run('Refreshing alerts', async () => {

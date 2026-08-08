@@ -852,12 +852,24 @@ service cloud.firestore {
       allow create, update, delete: if false;
     }
 
-    // No write path exists anywhere in the app today, and the store is
-    // never seeded either. Denied outright rather than granted
-    // speculatively.
+    // Declaring a holiday is settings.edit, the same capability that owns
+    // branches and fee plans — it is academy configuration, and
+    // js/services/holidays.service.js gates on exactly that.
+    //
+    // This block read `create, update, delete: if false` for as long as
+    // nothing wrote here, which was honest at the time and had a cost: three
+    // readers — the dashboard day board, Backup & restore, and the
+    // holidayReminders Cloud Function — were all reading a permanently empty
+    // collection.
+    //
+    // `update` also covers removal: removeHoliday() sets deletedAt rather
+    // than destroying the row, so the audit trail survives. A real delete is
+    // Administrator-only and exists for holidays$.replaceAll(), which restore
+    // needs — the same split branches uses, for the same reason.
     match /holidays/{holidayId} {
       allow read: if isProvisionedActiveUser();
-      allow create, update, delete: if false;
+      allow create, update: if canManageSettings();
+      allow delete: if isAdministrator();
     }
 
     // The key/value settings store (js/data/settings.repository.firestore.js)

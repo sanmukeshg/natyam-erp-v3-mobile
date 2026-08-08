@@ -42,6 +42,7 @@ const SHARED = [
     'js/services/batches.service.js',
     'js/services/programs.service.js',
     'js/services/settings.service.js',
+    'js/services/holidays.service.js',
     'firestore.rules'
 ];
 
