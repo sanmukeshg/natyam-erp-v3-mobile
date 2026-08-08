@@ -41,12 +41,29 @@ const STATE_LABEL = {
     upcoming: 'Later today'
 };
 
-/** The design's quick-action tiles, with their own icon tints. */
+/**
+ * The quick-action tiles — ENH-7XX.
+ *
+ * `tone`, not a hex pair. Each tile used to carry its own `color` and `bg`,
+ * fourteen literals across the three groups, and they measured 1.42:1 to
+ * 2.06:1 against a card — under half the 3:1 floor for a non-text graphic,
+ * while the analytics beside them ran 3.7–6.2. That gap is the whole ticket:
+ * the two halves of the screen were drawn from different palettes.
+ *
+ * THE TONE IS CHOSEN BY MEANING, not to spread the colours evenly:
+ *   positive  money coming in, or something finished
+ *   caution   the operational work of a day — attendance, admissions, the
+ *             timetable. Amber reads as "there is something to do here"
+ *   info      people and reference — students, parents, staff, settings
+ *   negative  deliberately absent. Red means something is WRONG, and a
+ *             permanent tile that is always red teaches people to ignore it
+ *             — including on Needs attention, where it has to work.
+ */
 const QUICK_ACTIONS = [
-    { label: 'Collect fee', icon: 'receipt', link: '#/fees', color: '#B45B34', bg: 'rgba(180,91,52,0.22)' },
-    { label: 'Students', icon: 'users', link: '#/students', color: '#5A6FA8', bg: 'rgba(90,111,168,0.2)' },
-    { label: 'Timetable', icon: 'calendar', link: '#/timetable', color: '#3E7DBF', bg: 'rgba(62,125,191,0.2)' },
-    { label: 'Attendance', icon: 'check-square', link: '#/attendance', color: '#3E6B31', bg: 'rgba(62,107,49,0.2)' }
+    { label: 'Collect fee', icon: 'receipt', link: '#/fees', tone: 'positive' },
+    { label: 'Students', icon: 'users', link: '#/students', tone: 'info' },
+    { label: 'Timetable', icon: 'calendar', link: '#/timetable', tone: 'caution' },
+    { label: 'Attendance', icon: 'check-square', link: '#/attendance', tone: 'caution' }
 ];
 
 /* ENH-301 — the Owner's Quick Access Workspace.
@@ -61,19 +78,19 @@ const QUICK_ACTIONS = [
  * already in Quick actions above, and repeating them is the duplication this
  * ticket asks to remove. */
 const DAILY_OPERATIONS = [
-    { label: 'Admissions', icon: 'inbox', link: '#/admissions', color: '#8C4A28', bg: 'rgba(140,74,40,0.2)' },
-    { label: 'Batches', icon: 'grid', link: '#/batches', color: '#5A6FA8', bg: 'rgba(90,111,168,0.2)' },
-    { label: 'Parents', icon: 'phone', link: '#/parents', color: '#3E6B31', bg: 'rgba(62,107,49,0.2)' },
-    { label: 'Notifications', icon: 'bell', link: '#/notifications', color: '#B45B34', bg: 'rgba(180,91,52,0.22)' }
+    { label: 'Admissions', icon: 'inbox', link: '#/admissions', tone: 'caution' },
+    { label: 'Batches', icon: 'grid', link: '#/batches', tone: 'info' },
+    { label: 'Parents', icon: 'phone', link: '#/parents', tone: 'info' },
+    { label: 'Notifications', icon: 'bell', link: '#/notifications', tone: 'caution' }
 ];
 
 const MANAGEMENT = [
-    { label: 'Staff', icon: 'briefcase', link: '#/staff', color: '#5A6FA8', bg: 'rgba(90,111,168,0.2)' },
-    { label: 'Programmes', icon: 'star', link: '#/programs', color: '#B45B34', bg: 'rgba(180,91,52,0.22)' },
-    { label: 'Certificates', icon: 'award', link: '#/certificates', color: '#3E7DBF', bg: 'rgba(62,125,191,0.2)' },
-    { label: 'Finance', icon: 'trending-up', link: '#/finance', color: '#3E6B31', bg: 'rgba(62,107,49,0.2)' },
-    { label: 'Analytics', icon: 'bar-chart', link: '#/analytics', color: '#5A6FA8', bg: 'rgba(90,111,168,0.2)' },
-    { label: 'Settings', icon: 'settings', link: '#/settings', color: '#8C4A28', bg: 'rgba(140,74,40,0.2)' }
+    { label: 'Staff', icon: 'briefcase', link: '#/staff', tone: 'info' },
+    { label: 'Programmes', icon: 'star', link: '#/programs', tone: 'caution' },
+    { label: 'Certificates', icon: 'award', link: '#/certificates', tone: 'positive' },
+    { label: 'Finance', icon: 'trending-up', link: '#/finance', tone: 'positive' },
+    { label: 'Analytics', icon: 'bar-chart', link: '#/analytics', tone: 'info' },
+    { label: 'Settings', icon: 'settings', link: '#/settings', tone: 'info' }
 ];
 
 export default class MobileDashboardPage extends Page {
@@ -236,7 +253,7 @@ export default class MobileDashboardPage extends Page {
             <div class="m-grid-2">
                 ${QUICK_ACTIONS.filter((action) => this.allowed(action)).map((action) => html`
                     <a class="m-card m-quick" href="${action.link}">
-                        <span class="m-quick-icon" style="background:${action.bg};color:${action.color};">
+                        <span class="m-quick-icon" data-tone="${action.tone}">
                             ${raw(icon(action.icon, { size: 18 }))}
                         </span>
                         <span class="m-quick-label">${action.label}</span>
@@ -469,7 +486,7 @@ export default class MobileDashboardPage extends Page {
             <div class="m-actions m-actions-grid">
                 ${visible.map((action) => html`
                     <a class="m-card m-quick" href="${action.link}">
-                        <span class="m-quick-icon" style="background:${action.bg};color:${action.color};">
+                        <span class="m-quick-icon" data-tone="${action.tone}">
                             ${raw(icon(action.icon, { size: 17 }))}
                         </span>
                         <span class="m-quick-label">${action.label}</span>

@@ -723,7 +723,13 @@ export default class MobileAdmissionsPage extends Page {
               options: ['Mother', 'Father', 'Grandparent', 'Guardian', 'Sibling']
                   .map((r) => ({ value: r, label: r })) },
             { name: 'guardianPhone', label: 'Contact number', type: 'tel', required: true },
-            { name: 'guardianEmail', label: 'Email', type: 'email' },
+            /* Required — UAT6. validateStep()'s `applicant` list is the
+               authority and would refuse a blank one anyway; marking it here is
+               what puts the asterisk on the label and catches it before submit
+               rather than after. It is the guardian's Parent Portal sign-in and
+               enrolment already demands it. */
+            { name: 'guardianEmail', label: 'Email', type: 'email', required: true,
+              help: 'The family signs in to the Natyam app with this.' },
             { name: 'address', label: 'Address', type: 'textarea', rows: 2 },
 
             { type: 'divider', label: 'Placement' },

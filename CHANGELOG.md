@@ -13,13 +13,58 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versioning is
 
 ---
 
-## [3.5.0] — unreleased
+## [3.5.1] — unreleased
 
-UAT Round 6. All four items — BUG-601, BUG-602, ENH-601 and ENH-602 — land in both apps,
+Two follow-ups, both raised after Round 6 was already live.
+
+### Added
+
+- **A global icon standard** (ENH-7XX). Coloured icon chips are now tinted through four
+  semantic tones — `positive`, `negative`, `caution`, `info` — set with a `data-tone`
+  attribute and resolved entirely from theme tokens. Three chip classes had solved the same
+  problem privately before this (`.m-quick-icon` took a hex pair from JavaScript,
+  `.m-announce-icon` hardcoded one blue, `.m-note-icon` had the right idea already), and the
+  dashboard carried **14 one-off colour literals** as a result.
+- **`--v3-info` / `--v3-tone-bg-info`, in both themes.** There was no token for "neither good
+  nor bad", which is why individual screens kept inventing a blue. `#9BD2F0` was chosen by
+  measurement: 4.53:1 on a chip, inside the band the other three tones already occupied.
+
+### Changed
+
+- **Icon chips now meet WCAG 2.1 SC 1.4.11.** They ran **1.42–2.06:1** against a 3:1 floor for
+  non-text contrast, while the analytics palette on the same screen ran 3.72–6.21:1 — which is
+  why the two halves of the dashboard looked like different products. They now measure
+  **7.29–8.33:1 dark** and **4.76–6.27:1 light**. Buttons, the tab bar, More-sheet rows and the
+  FAB were audited at the same time and already passed at 4.68–15.06:1; they are unchanged.
+- **Chip icons stroke at 2.1**, not 2. At 17px a 2px stroke lands on roughly 1.4 device pixels,
+  and that thinness read as "dim" before colour entered it.
+- **No navigation tile is red.** `negative` is defined and measured, but a permanent tile is
+  never in an error state — coluring Admissions red teaches people to ignore red, which then
+  fails where it has to work. Operational tiles take amber instead.
+- **Guardian email is mandatory on the mobile New student and Admission application forms.**
+  It was already required by `studentFields.js` on desktop and on mobile Add student; the
+  applicant step of the admission form and the parent self-service form still treated it as
+  optional, so an application could be approved into a student record that then failed its own
+  validation on the next edit. The parent form pre-fills the signed-in Google address, so
+  requiring it costs the family nothing — it was a placeholder before, which is grey text that
+  looks like an answer and is not one.
+
+---
+
+## [3.5.0] — 2026-08-08
+
+UAT Round 6, plus the server half of ENH-510. All four items — BUG-601, BUG-602, ENH-601 and ENH-602 — land in both apps,
 because all four change a workflow rather than a screen.
 
 ### Added
 
+- **`functions/` — the push sender** (ENH-510). Thirteen Cloud Functions in `asia-south1`:
+  eight scheduled (class reminders, owner daily digest, attendance nudge and evening sweep,
+  fee reminders, payroll reminder, holiday and event reminders) and five Firestore triggers
+  (payment recorded, admission created, admission status changed, session status changed,
+  announcement posted). The client half shipped in 3.4.0 and had nothing sending to it until
+  now. All scheduling is `Asia/Kolkata`; failures are swallowed rather than thrown, because a
+  retry on a notification job means the same person is told twice.
 - **`js/config/studentFields.js` — one definition of the student record** (ENH-602). The
   student form's fields, and which of them are mandatory, are declared once and built from
   three places: Add student, Edit student, and the Admissions enrol step. Byte-identical in

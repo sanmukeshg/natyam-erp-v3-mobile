@@ -116,6 +116,23 @@
        finish and gives the ink ramp room to be read. */
     --v3-tabbar-bg:   rgba(28, 15, 8, 0.82);
 
+    /*
+     * The fourth semantic tone — informational. ENH-7XX.
+     *
+     * Green, red and amber already existed and are what the analytics use.
+     * There was no token for "neither good nor bad, just a thing you can open",
+     * so every screen that needed one invented a hex: #8FBFF0 on .m-note-icon,
+     * #3E7DBF and #5A6FA8 on the dashboard tiles. Those last two measure
+     * 1.83:1 and 2.06:1 against a card, against a 3:1 floor.
+     *
+     * #9BD2F0 was chosen by measurement, not taste: 4.53:1 on a tinted chip,
+     * which sits inside the band the other three already occupy (3.72–4.93).
+     * Picking it any darker drops below the analytics palette and the icons go
+     * back to looking like a different, dimmer system.
+     */
+    --v3-info:             #9BD2F0;
+    --v3-tone-bg-info:     rgba(155, 210, 240, 0.16);
+
     --v3-tone-bg-positive: rgba(94, 166, 101, 0.14);
     --v3-tone-bg-negative: rgba(224, 94, 74, 0.14);
     --v3-tone-bg-caution:  rgba(224, 166, 74, 0.14);
@@ -163,6 +180,9 @@
     --v3-tone-bg-positive: rgba(94, 166, 101, 0.30);
     --v3-tone-bg-negative: rgba(224, 94, 74, 0.30);
     --v3-tone-bg-caution:  rgba(224, 166, 74, 0.30);
+    /* Info follows the same lightening as its three siblings — ENH-7XX. */
+    --v3-info:             #A8DCF4;
+    --v3-tone-bg-info:     rgba(155, 210, 240, 0.30);
     --v3-tone-neutral:     rgba(255, 255, 255, 0.5);
 
     /* Delta text sits ON those tints, so it lightens with them. */
@@ -532,6 +552,69 @@ a.m-attn:hover { text-decoration: none; }
 }
 .m-quick:hover { text-decoration: none; }
 .m-quick-icon { width: 34px; height: 34px; flex-shrink: 0; display: grid; place-items: center; border-radius: var(--v3-radius-item); }
+
+/* ==========================================================================
+   THE ICON TONE STANDARD  (ENH-7XX)
+   --------------------------------------------------------------------------
+   One rule for every coloured icon chip in the app, opted into with
+   `data-tone`. Three chips already existed and each solved this privately:
+   .m-note-icon had the right idea with `data-severity` and token colours,
+   .m-announce-icon hardcoded one blue, and .m-quick-icon took a hex and an
+   rgba() passed in from JavaScript per tile — fourteen of them.
+   Those fourteen measured between 1.42:1 and 2.06:1 against a card. The floor
+   for a non-text graphic is 3:1 (WCAG 2.1 SC 1.4.11) and the analytics
+   palette sits at 3.7–6.2, which is exactly why the two halves of the app
+   looked like different products.
+   Every tone below is a TOKEN, so a theme change moves the icons with it and
+   nobody has to remember a hex. Measured on the dark theme:
+       positive 4.93:1 · caution 4.54:1 · negative 3.72:1 · info 4.53:1
+   RED IS NOT A DECORATION. `negative` means something is wrong — overdue,
+   failed, needing attention. A permanent navigation tile is never red, or the
+   colour stops meaning anything on the one screen where it does.
+   ========================================================================== */
+
+.m-icon-tone,
+.m-quick-icon,
+.m-announce-icon,
+.m-note-icon {
+    /* Neutral until a tone says otherwise — a chip with no tone is still
+       legible rather than invisible, which is what `currentColor` inherited
+       from a muted parent would have given. */
+    background: var(--v3-ghost-bg);
+    color: var(--v3-name);
+}
+
+.m-icon-tone[data-tone="positive"], .m-quick-icon[data-tone="positive"],
+.m-announce-icon[data-tone="positive"], .m-note-icon[data-severity="success"] {
+    background: var(--v3-tone-bg-positive); color: var(--v3-positive);
+}
+.m-icon-tone[data-tone="negative"], .m-quick-icon[data-tone="negative"],
+.m-announce-icon[data-tone="negative"], .m-note-icon[data-severity="error"] {
+    background: var(--v3-tone-bg-negative); color: var(--v3-negative);
+}
+.m-icon-tone[data-tone="caution"], .m-quick-icon[data-tone="caution"],
+.m-announce-icon[data-tone="caution"], .m-note-icon[data-severity="warning"] {
+    background: var(--v3-tone-bg-caution); color: var(--v3-caution);
+}
+.m-icon-tone[data-tone="info"], .m-quick-icon[data-tone="info"],
+.m-announce-icon[data-tone="info"], .m-note-icon[data-severity="info"] {
+    background: var(--v3-tone-bg-info); color: var(--v3-info);
+}
+
+/*
+ * One stroke weight for every icon in a chip.
+ *
+ * The icon set draws at stroke-width 2 on a 24px canvas; rendered at 17–18px
+ * that thins to about 1.4 device pixels and is most of why these read as
+ * "dim" even before colour came into it. Nudging the stroke up restores the
+ * weight without redrawing the set, and `vector-effect` keeps it honest at
+ * any size.
+ */
+.m-icon-tone > svg, .m-quick-icon > svg,
+.m-announce-icon > svg, .m-note-icon > svg {
+    stroke-width: 2.1;
+    vector-effect: non-scaling-stroke;
+}
 .m-quick-label { font-size: var(--text-sm); font-weight: var(--weight-semibold); color: var(--v3-name); }
 
 
@@ -1065,9 +1148,14 @@ a.m-attn:hover { text-decoration: none; }
     width: 100%; min-height: var(--v3-tap); padding: 12px 14px; margin-bottom: 12px;
     cursor: pointer; font-family: inherit; color: var(--v3-name);
 }
+/* Geometry only — colour comes from the icon tone standard above (ENH-7XX),
+   which defaults this to `info` where no data-tone is given. */
 .m-announce-icon {
     flex-shrink: 0; width: 32px; height: 32px; display: grid; place-items: center;
-    border-radius: 9px; background: rgba(62, 125, 191, 0.2); color: #8FBFF0;
+    border-radius: 9px;
+}
+.m-announce-icon:not([data-tone]) {
+    background: var(--v3-tone-bg-info); color: var(--v3-info);
 }
 .m-announce-title { display: block; font-size: var(--text-sm); font-weight: var(--weight-semibold); }
 .m-announce-sub {
@@ -1080,14 +1168,13 @@ a.m-attn:hover { text-decoration: none; }
 .m-note[data-read="true"] { opacity: 0.6; }
 
 .m-note-head { display: flex; align-items: flex-start; gap: 10px; }
+/* Geometry only. The four severities are coloured by the icon tone standard
+   above (ENH-7XX) — this block used to carry its own rgba() tints and a
+   one-off #8FBFF0, which is the hex --v3-info now replaces. */
 .m-note-icon {
     flex-shrink: 0; width: 32px; height: 32px; display: grid; place-items: center;
-    border-radius: 9px; background: var(--v3-ghost-bg); color: var(--v3-muted);
+    border-radius: 9px;
 }
-.m-note-icon[data-severity="error"]   { background: rgba(224, 94, 74, 0.2); color: var(--v3-negative); }
-.m-note-icon[data-severity="warning"] { background: rgba(224, 166, 74, 0.2); color: var(--v3-caution); }
-.m-note-icon[data-severity="success"] { background: rgba(94, 166, 101, 0.2); color: var(--v3-positive); }
-.m-note-icon[data-severity="info"]    { background: rgba(62, 125, 191, 0.2); color: #8FBFF0; }
 
 .m-note-title { font-size: var(--text-sm); font-weight: var(--weight-semibold); color: var(--v3-name); }
 .m-note-body  { font-size: 12.5px; color: var(--v3-muted); margin-top: 2px; }

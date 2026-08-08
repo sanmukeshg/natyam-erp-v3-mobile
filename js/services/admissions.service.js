@@ -38,7 +38,23 @@ export const ADMISSION_STEPS = Object.freeze([
     // Milestone: Applicant+Parent merged into one step, and Placement+Batch
     // merged into one step; Medical and Documents removed outright — NATYAM
     // does not collect either, with no replacement planned.
-    { key: 'applicant',  label: 'Applicant',   required: ['name', 'dateOfBirth', 'gender', 'guardianName', 'guardianRelation', 'guardianPhone'] },
+    /*
+     * `guardianEmail` joined this list in UAT6. It was validated for FORMAT and
+     * never for presence, so a blank one sailed through every admission form.
+     *
+     * It has to be required here because ENROLMENT already demands it
+     * (MANDATORY_STUDENT_FIELDS, js/config/studentFields.js). Without it the
+     * gap fails at the worst possible moment: the Owner has the family's place
+     * ready, opens Enrol, and is stopped by a field only the parent can supply
+     * — so the enrolment stops and somebody starts chasing a phone call.
+     * Asking while the family is standing there costs nothing.
+     *
+     * It is also the guardian's sign-in identity: guardianAuth.service.js
+     * matches a signed-in parent with an equality query on `guardianEmail`, so
+     * a student enrolled without one has a family that cannot reach the Parent
+     * Portal at all. Same reason the student form requires it.
+     */
+    { key: 'applicant',  label: 'Applicant',   required: ['name', 'dateOfBirth', 'gender', 'guardianName', 'guardianRelation', 'guardianPhone', 'guardianEmail'] },
     { key: 'placement',  label: 'Placement',   required: ['branchId', 'level'] },
     { key: 'experience', label: 'Experience',  required: [] },
     { key: 'fees',       label: 'Fee plan',    required: ['feePlanId'] },
@@ -52,6 +68,7 @@ const FIELD_LABELS = {
     guardianName: 'the parent or guardian’s name',
     guardianRelation: 'the relationship to the applicant',
     guardianPhone: 'a contact number',
+    guardianEmail: 'an email address',
     branchId: 'a branch',
     level: 'a starting level',
     feePlanId: 'a fee plan'

@@ -51,7 +51,19 @@ export default class ApplicantApplyPage extends Page {
         this.title = 'Admission application';
         this.identity = applicantSession.identity();
         this.stepIndex = 0;
-        this.data = {};
+
+        /*
+         * Seeded with the signed-in Google account — UAT6, when the email
+         * became required.
+         *
+         * The address is already known: the parent signed in with it, and
+         * submitSelfApplication() has always fallen back to it. Making the
+         * field required without filling it would have asked a family to type
+         * something the app was about to supply anyway. Editable, because the
+         * account they sign in with is not always the address they want the
+         * school writing to.
+         */
+        this.data = { guardianEmail: this.identity.email || '' };
         this.errors = {};
         this.branches = [];
         this.busy = false;
@@ -191,8 +203,18 @@ export default class ApplicantApplyPage extends Page {
             ${this.field('guardianRelation', 'Your relationship to the child', {
                 required: true, options: RELATIONSHIPS })}
             ${this.field('guardianPhone', 'Contact number', { type: 'tel', required: true, placeholder: '+91…' })}
-            ${this.field('guardianEmail', 'Email', { type: 'email',
-                placeholder: this.identity.email || '' })}
+            <!--
+              Required since UAT6, and PRE-FILLED so that costs the family
+              nothing. It was a placeholder before — grey text that looks like
+              an answer and is not one — with submitSelfApplication() quietly
+              falling back to the signed-in address if it was left blank.
+
+              That fallback still exists as a safety net, but the address is now
+              on screen as a real value the parent can see and correct. Some
+              families apply from one Google account and want the school to
+              write to another; a placeholder gave them no way to notice.
+            -->
+            ${this.field('guardianEmail', 'Email', { type: 'email', required: true })}
         `;
     }
 
