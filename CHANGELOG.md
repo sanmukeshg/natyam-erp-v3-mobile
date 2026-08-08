@@ -13,6 +13,30 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versioning is
 
 ---
 
+## [3.6.2] — unreleased
+
+### Fixed
+
+- **The Notifications screen was down in both apps** — "(b.createdAt || '').localeCompare is
+  not a function". `/notifications` has two writers and they disagreed: both apps write
+  `createdAt` as an ISO string, while the ENH-510 Cloud Functions wrote
+  `FieldValue.serverTimestamp()`, which reads back as a Firestore Timestamp **object**. A
+  Timestamp is truthy, so the `|| ''` guard never fired, and it has no `localeCompare`. Because
+  the throw happened inside `Array.sort` in `recent()`, which feeds `centre()`, **one**
+  function-written row took the whole feed down for everyone — not just that row.
+- **`functions/lib/push.js` now writes an ISO string**, like every other writer. A more
+  accurate clock is worth nothing against a consistent shape, and `at` on the adjacent line was
+  already the same process's time as ISO.
+- **The sort tolerates any shape** — string, Timestamp, plain `{seconds}` (what survives a
+  Backup & restore round-trip), `Date`, or missing. Kept even though the writer is fixed: rows
+  already written keep their Timestamps permanently, and a sort that only works on well-formed
+  data is what took a screen down in the first place.
+
+This was introduced by the ENH-510 sender in `bc0326d` and stayed latent until the functions
+had written their first notification row.
+
+---
+
 ## [3.6.1] — unreleased
 
 Hardening after the push-subscription failure was reported a second time, from a device the

@@ -29,6 +29,41 @@ import { getDoc, getDocs } from './firestoreRead.js';
 const COLLECTION_NAME = 'notifications';
 const notificationsCollection = collection(firestore, COLLECTION_NAME);
 
+/**
+ * `createdAt` as something sortable, whatever shape it arrived in.
+ *
+ * THIS COLLECTION HAS TWO WRITERS AND THEY DISAGREED. The app writes an ISO
+ * string (`nowISO()`); the ENH-510 Cloud Functions wrote
+ * `FieldValue.serverTimestamp()`, which reads back as a Firestore Timestamp
+ * object. `(b.createdAt || '').localeCompare(...)` then threw
+ * "localeCompare is not a function" — a Timestamp is truthy, so the `|| ''`
+ * guard never fired — and because `recent()` feeds `centre()`, ONE
+ * function-written row took the entire Notifications screen down in both
+ * apps.
+ *
+ * `functions/lib/push.js` now writes an ISO string like everything else, so
+ * new rows are consistent. This stays because the rows already written keep
+ * their Timestamps for good, and a sort that only works on well-formed data
+ * is the reason a screen went down in the first place.
+ *
+ * Firestore Timestamps are duck-typed rather than instanceof-checked: this
+ * module never imports the Timestamp class, and a plain `{seconds,nanoseconds}`
+ * survives a Backup & restore round-trip where an instance would not.
+ */
+function sortableTime(value) {
+    if (!value) return '';
+    if (typeof value === 'string') return value;
+    if (typeof value.toDate === 'function') return value.toDate().toISOString();
+    if (typeof value.seconds === 'number') return new Date(value.seconds * 1000).toISOString();
+    if (value instanceof Date) return value.toISOString();
+    return String(value);
+}
+
+/** Newest first. */
+function byNewest(a, b) {
+    return sortableTime(b.createdAt).localeCompare(sortableTime(a.createdAt));
+}
+
 class FirestoreNotificationRepository {
     /* ---------------------------------------------------------------- HOOKS */
 
@@ -70,7 +105,7 @@ class FirestoreNotificationRepository {
 
     async recent(limit = 30) {
         return (await this.all())
-            .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))
+            .sort(byNewest)
             .slice(0, limit);
     }
 
@@ -158,7 +193,7 @@ class FirestoreNotificationRepository {
 
     /** Keeps the store from growing without bound. Called at boot (js/app.js). */
     async prune(keep = 200) {
-        const rows = (await this.all()).sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+        const rows = (await this.all()).sort(byNewest);
         const excess = rows.slice(keep);
         if (!excess.length) return 0;
 

@@ -16,7 +16,10 @@
  *      record — a push with no matching row vanishes when it is dismissed.
  */
 
-import { getFirestore, FieldValue } from 'firebase-admin/firestore';
+// FieldValue is deliberately not imported: serverTimestamp() is the only
+// thing it was used for here, and writing one into /notifications is what
+// broke the feed. See the note on `createdAt` in record().
+import { getFirestore } from 'firebase-admin/firestore';
 import { getMessaging } from 'firebase-admin/messaging';
 import { logger } from 'firebase-functions';
 
@@ -170,7 +173,22 @@ export async function record({ kind = 'system', title, body = null, link = null,
     const created = await db().collection('notifications').add({
         kind, title, body, link, key: dedupeKey, read: 0,
         at: new Date().toISOString(),
-        createdAt: FieldValue.serverTimestamp(),
+        /*
+         * An ISO string, NOT FieldValue.serverTimestamp().
+         *
+         * serverTimestamp() was the reflex — it is the better clock — and it
+         * took the Notifications screen down in both apps. Every other writer
+         * of this collection stores `createdAt` as an ISO string and the
+         * clients sort it with localeCompare(). A Timestamp reads back as an
+         * object, is truthy so the `|| ''` guard never fired, and has no
+         * localeCompare — so ONE row written here threw inside Array.sort and
+         * took the entire feed down for everyone, not just that row.
+         *
+         * A more accurate clock is worth nothing against a consistent shape.
+         * `at` on the line above is already this process's own time as ISO,
+         * and the two have to agree in any case.
+         */
+        createdAt: new Date().toISOString(),
         createdBy: 'system'
     });
     return created.id;
