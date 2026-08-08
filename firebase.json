@@ -1,4 +1,14 @@
 {
+  "functions": {
+    "source": "functions",
+    "codebase": "push",
+    "ignore": [
+      "node_modules",
+      ".git",
+      "*.log",
+      "RESUME.md"
+    ]
+  },
   "hosting": {
     "target": "mobile",
     "public": ".",
@@ -9,7 +19,8 @@
       "docs/**",
       "tools/**",
       "*.md",
-      "firestore.rules"
+      "firestore.rules",
+      "functions/**"
     ],
     "rewrites": [
       {
@@ -64,5 +75,17 @@
         ]
       }
     ]
+  },
+  "emulators": {
+    "firestore": {
+      "port": 8090
+    },
+    "functions": {
+      "port": 5011
+    },
+    "ui": {
+      "enabled": false
+    },
+    "singleProjectMode": true
   }
 }

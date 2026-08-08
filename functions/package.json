@@ -1,0 +1,19 @@
+{
+  "name": "natyam-erp-functions",
+  "description": "Push notification sender for Natyam ERP v3 (UAT5 ENH-510)",
+  "private": true,
+  "type": "module",
+  "main": "index.js",
+  "engines": {
+    "node": "20"
+  },
+  "scripts": {
+    "serve": "firebase emulators:start --only functions",
+    "logs": "firebase functions:log",
+    "lint": "node --check index.js && node --check lib/push.js && node --check lib/time.js && node --check jobs.js && node --check triggers.js"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.7.0",
+    "firebase-functions": "^6.1.0"
+  }
+}
