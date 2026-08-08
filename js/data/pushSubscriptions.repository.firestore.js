@@ -49,10 +49,20 @@ class FirestorePushSubscriptionRepository {
      * Upsert. `merge: false` on purpose — the client always sends the whole
      * record, and a merge would leave a stale category list behind when someone
      * turns a category off.
+     *
+     * `id` is destructured away rather than overwritten. It is the document key,
+     * so storing it again would duplicate it inside the document — and
+     * `updatePushPreferences()` spreads an existing row straight back in here,
+     * which is how it arrives. Setting `id: undefined` looked like it removed
+     * the field and did not: Firestore rejects an undefined value outright
+     * ("Unsupported field value: undefined") instead of ignoring the key, so
+     * enabling notifications failed on the write. Every other repository in
+     * `js/data` already destructures; this one was the exception.
      */
     async save(token, data) {
-        await setDoc(doc(firestore, 'pushSubscriptions', token), { ...data, id: undefined });
-        return { id: token, ...data };
+        const { id, ...fields } = data;
+        await setDoc(doc(firestore, 'pushSubscriptions', token), fields);
+        return { id: token, ...fields };
     }
 
     async remove(token) {
